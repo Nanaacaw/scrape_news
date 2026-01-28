@@ -30,10 +30,6 @@ def scheduled_scrape_job():
         with get_db() as db:
             new_count = pipeline.process_articles(db, articles)
             logger.info(f"Processed {new_count} new articles")
-            
-            # Update screening signals
-            signals = pipeline.update_screening_signals(db)
-            logger.info(f"Generated {len(signals)} screening signals")
         
         logger.info("Scheduled scraping job completed successfully")
         

@@ -29,9 +29,7 @@ def scrape_command(args):
     # Scrape articles
     if args.category == 'market':
         articles = scraper.scrape_market_news(max_articles=args.limit)
-    elif args.category == 'investment':
-        articles = scraper.scrape_investment_news(max_articles=args.limit)
-    else:  # all
+    else:  # all (which is now just market)
         articles = scraper.scrape_all(max_articles_per_category=args.limit)
     
     logger.info(f"Scraped {len(articles)} articles")
@@ -40,9 +38,6 @@ def scrape_command(args):
     with get_db() as db:
         new_count = pipeline.process_articles(db, articles)
         logger.info(f"Processed {new_count} new articles")
-        
-        if args.generate_signals:
-            pipeline.update_screening_signals(db)
 
 
 def analyze_command(args):
@@ -55,7 +50,7 @@ def analyze_command(args):
         from src.database.models import Article
         
         # Get articles without sentiment
-        articles = db.query(Article).filter(~Article.sentiment.has()).all()
+        articles = db.query(Article).filter(Article.sentiment_label.is_(None)).all()
         
         if not articles:
             logger.info("All articles already have sentiment analysis")
@@ -66,59 +61,81 @@ def analyze_command(args):
         logger.info("Sentiment analysis complete!")
 
 
-def screen_command(args):
-    """Generate screening signals"""
-    logger.info("Generating screening signals...")
-    
-    pipeline = DataPipeline()
-    
+def search_command(args):
+    """Search articles by ticker"""
     with get_db() as db:
-        signals = pipeline.update_screening_signals(db)
+        from src.database.models import Article
+        from sqlalchemy import or_
         
-        if args.show:
-            from src.screening.screener import StockScreener
-            screener = StockScreener()
+        ticker = args.ticker.upper()
+        
+        # Search articles that contain the ticker
+        articles = db.query(Article).filter(
+            or_(
+                Article.tickers.like(f'%{ticker}%'),
+                Article.tickers == ticker
+            ),
+            Article.sentiment_label.isnot(None)
+        ).order_by(Article.published_date.desc()).all()
+        
+        if not articles:
+            print(f"\n❌ No articles found for ticker: {ticker}")
+            return
+        
+        print(f"\n{'='*80}")
+        print(f"SEARCH RESULTS: {ticker}")
+        print(f"{'='*80}")
+        print(f"Found {len(articles)} articles\n")
+        
+        # Calculate sentiment stats
+        sentiments = [a.sentiment_score for a in articles if a.sentiment_score]
+        if sentiments:
+            avg_sentiment = sum(sentiments) / len(sentiments)
+            positive = len([a for a in articles if a.sentiment_label == 'positive'])
+            negative = len([a for a in articles if a.sentiment_label == 'negative'])
+            neutral = len([a for a in articles if a.sentiment_label == 'neutral'])
             
-            print("\n" + "="*80)
-            print("SCREENING SIGNALS")
-            print("="*80)
+            print(f"📊 Sentiment Summary:")
+            print(f"   Average: {avg_sentiment:+.2f} ({'Positive' if avg_sentiment > 0 else 'Negative' if avg_sentiment < 0 else 'Neutral'})")
+            print(f"   Positive: {positive} ({positive/len(articles)*100:.1f}%)")
+            print(f"   Negative: {negative} ({negative/len(articles)*100:.1f}%)")
+            print(f"   Neutral:  {neutral} ({neutral/len(articles)*100:.1f}%)")
+            print()
+        
+        # Show articles
+        print(f"📰 Recent Articles:")
+        print(f"{'-'*80}")
+        
+        for i, article in enumerate(articles[:args.limit], 1):
+            sentiment_emoji = "✅" if article.sentiment_label == 'positive' else "❌" if article.sentiment_label == 'negative' else "➖"
             
-            for signal_type in ['BUY', 'SELL', 'HOLD']:
-                results = screener.get_top_signals(db, signal_type=signal_type, limit=args.limit)
-                
-                if results:
-                    print(f"\n{signal_type} Signals:")
-                    print("-" * 80)
-                    
-                    for r in results:
-                        print(f"  {r['ticker']:6} | {r['company_name'] or 'N/A':30} | "
-                              f"Strength: {r['signal_strength']:4.2f} | "
-                              f"Sentiment: {r['avg_sentiment']:5.2f} | "
-                              f"Articles: {r['article_count']:3}")
-            
-            print("\n" + "="*80)
+            print(f"\n{i}. {sentiment_emoji} [{article.sentiment_label.upper()}] {article.title}")
+            print(f"   Score: {article.sentiment_score:+.2f} | Confidence: {article.confidence:.0%}")
+            print(f"   Published: {article.published_date.strftime('%d %b %Y') if article.published_date else 'N/A'}")
+            print(f"   Tickers: {article.tickers or 'None'}")
+            print(f"   URL: {article.url}")
+        
+        print(f"\n{'='*80}\n")
 
 
 def stats_command(args):
     """Show database statistics"""
     with get_db() as db:
-        from src.database.models import Article, Sentiment, Stock, ScreeningSignal
+        from src.database.models import Article
         from sqlalchemy import func
         
         article_count = db.query(func.count(Article.id)).scalar()
-        sentiment_count = db.query(func.count(Sentiment.id)).scalar()
-        stock_count = db.query(func.count(Stock.id)).scalar()
-        signal_count = db.query(func.count(ScreeningSignal.id)).scalar()
+        analyzed_count = db.query(func.count(Article.id)).filter(Article.sentiment_label.isnot(None)).scalar()
         
-        avg_sentiment = db.query(func.avg(Sentiment.sentiment_score)).scalar() or 0
+        avg_sentiment = db.query(func.avg(Article.sentiment_score)).filter(
+            Article.sentiment_label.isnot(None)
+        ).scalar() or 0
         
         print("\n" + "="*80)
         print("DATABASE STATISTICS")
         print("="*80)
         print(f"Total Articles:      {article_count}")
-        print(f"Analyzed Articles:   {sentiment_count}")
-        print(f"Unique Stocks:       {stock_count}")
-        print(f"Screening Signals:   {signal_count}")
+        print(f"Analyzed Articles:   {analyzed_count}")
         print(f"Average Sentiment:   {avg_sentiment:.2f}")
         print("="*80 + "\n")
 
@@ -138,37 +155,33 @@ def main():
     scrape_parser = subparsers.add_parser('scrape', help='Scrape news articles')
     scrape_parser.add_argument(
         '--category',
-        choices=['market', 'investment', 'all'],
+        choices=['market', 'all'],
         default='all',
-        help='Category to scrape'
+        help='Category to scrape (all = market only)'
     )
     scrape_parser.add_argument(
         '--limit',
         type=int,
         default=50,
-        help='Maximum articles per category'
-    )
-    scrape_parser.add_argument(
-        '--generate-signals',
-        action='store_true',
-        help='Generate screening signals after scraping'
+        help='Maximum articles to scrape'
     )
     
     # Analyze command
     analyze_parser = subparsers.add_parser('analyze', help='Run sentiment analysis')
     
-    # Screen command
-    screen_parser = subparsers.add_parser('screen', help='Generate screening signals')
-    screen_parser.add_argument(
-        '--show',
-        action='store_true',
-        help='Display signals after generation'
+    # Search command
+    search_parser = subparsers.add_parser('search', help='Search articles by ticker')
+    search_parser.add_argument(
+        '--ticker',
+        type=str,
+        required=True,
+        help='Stock ticker to search (e.g., BBRI, BBCA, TLKM)'
     )
-    screen_parser.add_argument(
+    search_parser.add_argument(
         '--limit',
         type=int,
-        default=10,
-        help='Number of signals to show per type'
+        default=20,
+        help='Maximum number of articles to display'
     )
     
     # Stats command
@@ -190,8 +203,8 @@ def main():
             scrape_command(args)
         elif args.command == 'analyze':
             analyze_command(args)
-        elif args.command == 'screen':
-            screen_command(args)
+        elif args.command == 'search':
+            search_command(args)
         elif args.command == 'stats':
             stats_command(args)
         elif args.command == 'dashboard':

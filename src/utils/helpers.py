@@ -18,12 +18,51 @@ def clean_text(text: str) -> str:
 
 def extract_stock_tickers(text: str) -> List[str]:
     """
-    Extract stock tickers from text (e.g., BBCA, TLKM, GOTO)
-    Assumes tickers are 4-letter uppercase words
+    Extract stock tickers from text (Indonesian stock market: BEI/IDX)
+    Tickers are typically 4-letter uppercase codes
+    
+    Returns:
+        List of unique ticker symbols found in text
     """
-    # Look for 4-letter uppercase words that might be stock tickers
-    tickers = re.findall(r'\b[A-Z]{4}\b', text)
-    return list(set(tickers))
+    if not text:
+        return []
+    
+    # Common Indonesian stock tickers (partial list for better accuracy)
+    # This helps reduce false positives
+    known_tickers = {
+        # Banking
+        'BBRI', 'BBCA', 'BMRI', 'BBNI', 'BBTN', 'BNGA', 'NISP', 'BNLI', 'MEGA', 'BRIS',
+        # Telecom
+        'TLKM', 'EXCL', 'ISAT', 'FREN',
+        # Energy
+        'PGAS', 'MEDC', 'ELSA', 'AKRA', 'ADRO', 'PTBA', 'ITMG', 'HRUM',
+        # Consumer
+        'UNVR', 'INDF', 'ICBP', 'MYOR', 'KLBF', 'SIDO', 'KAEF', 'GGRM', 'HMSP',
+        # Tech & Media
+        'GOTO', 'BUKA', 'EMTK', 'MNCN',
+        # Property
+        'BSDE', 'CTRA', 'PWON', 'ASRI', 'LPKR', 'SMRA',
+        # Automotive
+        'ASII', 'AUTO', 'IMAS', 'SMSM',
+        # Retail
+        'ACES', 'ERAA', 'LPPF', 'MAPI', 'RALS',
+        # Construction
+        'WIKA', 'WSKT', 'PTPP', 'ADHI', 'TOTL',
+        # Mining
+        'ANTM', 'INCO', 'TINS', 'MDKA',
+        # Conglomerate
+        'AALI', 'JSMR', 'UNTR', 'BUMI',
+    }
+    
+    # Find all 4-letter uppercase words
+    pattern = r'\b[A-Z]{4}\b'
+    potential_tickers = re.findall(pattern, text)
+    
+    # Filter to only known tickers to reduce false positives
+    # (e.g., "YANG", "AKAN", "DARI" are common Indonesian words)
+    tickers = [t for t in potential_tickers if t in known_tickers]
+    
+    return list(set(tickers))  # Return unique tickers
 
 def parse_indonesian_date(date_str: str) -> Optional[datetime]:
     """

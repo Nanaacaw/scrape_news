@@ -258,18 +258,9 @@ class CNBCScraper:
         return self.scrape_category(CNBC_INVESTMENT_URL, max_articles)
     
     def scrape_all(self, max_articles_per_category: int = MAX_ARTICLES_PER_SCRAPE) -> List[Dict]:
-        """Scrape all relevant categories"""
-        all_articles = []
+        """Scrape market news only (excluding mymoney and investment)"""
+        logger.info("Scraping Market news only...")
+        articles = self.scrape_category(CNBC_MARKET_URL, max_articles_per_category)
+        logger.info(f"Scraped {len(articles)} articles from Market section")
         
-        categories = [
-            ('Market', CNBC_MARKET_URL),
-            ('Investment', CNBC_INVESTMENT_URL),
-        ]
-        
-        for category_name, category_url in categories:
-            logger.info(f"Scraping {category_name} news...")
-            articles = self.scrape_category(category_url, max_articles_per_category)
-            all_articles.extend(articles)
-            logger.info(f"Scraped {len(articles)} articles from {category_name}")
-        
-        return all_articles
+        return articles

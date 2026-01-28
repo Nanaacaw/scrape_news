@@ -16,8 +16,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import func, desc
 
 from src.database.connection import get_db
-from src.database.models import Article, Sentiment, Stock, ScreeningSignal, ArticleStock
-from src.utils.config import SIGNAL_TIMEFRAME_DAYS
+from src.database.models import Article
 
 # Page configuration
 st.set_page_config(
@@ -53,32 +52,29 @@ def load_dashboard_data(timeframe_days: int):
         start_date = end_date - timedelta(days=timeframe_days)
         
         # Get articles with sentiment
-        articles = db.query(Article, Sentiment).join(Sentiment).filter(
-            Article.published_date >= start_date
+        articles = db.query(Article).filter(
+            Article.published_date >= start_date,
+            Article.sentiment_label.isnot(None)  # Only articles with sentiment
         ).order_by(desc(Article.published_date)).all()
-        
-        # Get latest screening signals
-        signals = db.query(ScreeningSignal, Stock).join(Stock).order_by(
-            desc(ScreeningSignal.signal_strength)
-        ).limit(50).all()
         
         # Get sentiment statistics
         sentiment_stats = db.query(
-            func.count(Sentiment.id).label('total'),
-            func.avg(Sentiment.sentiment_score).label('avg_sentiment'),
-            func.count(Sentiment.id).filter(Sentiment.sentiment_label == 'positive').label('positive_count'),
-            func.count(Sentiment.id).filter(Sentiment.sentiment_label == 'negative').label('negative_count'),
-            func.count(Sentiment.id).filter(Sentiment.sentiment_label == 'neutral').label('neutral_count'),
-        ).join(Article).filter(
-            Article.published_date >= start_date
+            func.count(Article.id).label('total'),
+            func.avg(Article.sentiment_score).label('avg_sentiment'),
+            func.count(Article.id).filter(Article.sentiment_label == 'positive').label('positive_count'),
+            func.count(Article.id).filter(Article.sentiment_label == 'negative').label('negative_count'),
+            func.count(Article.id).filter(Article.sentiment_label == 'neutral').label('neutral_count'),
+        ).filter(
+            Article.published_date >= start_date,
+            Article.sentiment_label.isnot(None)
         ).first()
         
-        return articles, signals, sentiment_stats
+        return articles, sentiment_stats
 
 
 def main():
-    st.title("📈 CNBC Market Sentiment Analysis & Stock Screening")
-    st.markdown("Real-time sentiment analysis dari berita CNBC Indonesia untuk stock screening")
+    st.title("📈 CNBC Market Sentiment Analysis")
+    st.markdown("Real-time sentiment analysis dari berita CNBC Indonesia Market")
     
     # Sidebar
     with st.sidebar:
@@ -95,15 +91,14 @@ def main():
         st.markdown("### 📊 Tentang Dashboard")
         st.markdown("""
         Dashboard ini menampilkan:
-        - Sentiment analysis dari berita CNBC Indonesia
-        - Screening signals untuk saham
+        - Sentiment analysis dari berita CNBC Indonesia Market
         - Trend sentiment dari waktu ke waktu
-        - Top stocks berdasarkan sentiment
+        - Statistik artikel positif/negatif/neutral
         """)
     
     # Load data
     with st.spinner("Loading data..."):
-        articles, signals, sentiment_stats = load_dashboard_data(timeframe)
+        articles, sentiment_stats = load_dashboard_data(timeframe)
     
     # Overview metrics
     st.header("📊 Overview")
@@ -172,31 +167,11 @@ def main():
     else:
         st.info("Belum ada data sentiment untuk timeframe ini")
     
-    # Screening signals
-    st.header("🎯 Stock Screening Signals")
-    
-    if signals:
-        # Filter tabs
-        tab_all, tab_buy, tab_sell = st.tabs(["All Signals", "🟢 BUY", "🔴 SELL"])
-        
-        with tab_all:
-            display_signals(signals, None)
-        
-        with tab_buy:
-            buy_signals = [(sig, stock) for sig, stock in signals if sig.signal_type == 'BUY']
-            display_signals(buy_signals, 'BUY')
-        
-        with tab_sell:
-            sell_signals = [(sig, stock) for sig, stock in signals if sig.signal_type == 'SELL']
-            display_signals(sell_signals, 'SELL')
-    else:
-        st.info("Belum ada screening signals. Jalankan scraper terlebih dahulu.")
-    
     # Recent articles
     st.header("📰 Recent Articles")
     
     if articles:
-        for article, sentiment in articles[:10]:  # Show top 10
+        for article in articles[:10]:  # Show top 10
             with st.expander(f"{article.title}"):
                 col1, col2 = st.columns([3, 1])
                 
@@ -204,15 +179,15 @@ def main():
                     st.markdown(f"**Category:** {article.category or 'N/A'}")
                     st.markdown(f"**Author:** {article.author or 'N/A'}")
                     st.markdown(f"**Published:** {article.published_date.strftime('%d %b %Y, %H:%M') if article.published_date else 'N/A'}")
-                    st.markdown(f"**Summary:** {article.summary[:300]}..." if article.summary else "")
+                    st.markdown(f"**Content:** {article.content[:300]}..." if article.content else "")
                     st.markdown(f"[Read full article]({article.url})")
                 
                 with col2:
-                    sentiment_color = "#00CC96" if sentiment.sentiment_label == 'positive' else "#EF553B" if sentiment.sentiment_label == 'negative' else "#FFA15A"
+                    sentiment_color = "#00CC96" if article.sentiment_label == 'positive' else "#EF553B" if article.sentiment_label == 'negative' else "#FFA15A"
                     st.markdown(f"<div style='background-color: {sentiment_color}; padding: 10px; border-radius: 5px; text-align: center;'>"
-                              f"<b>{sentiment.sentiment_label.upper()}</b><br>"
-                              f"Score: {sentiment.sentiment_score:.2f}<br>"
-                              f"Confidence: {sentiment.confidence:.1%}"
+                              f"<b>{article.sentiment_label.upper() if article.sentiment_label else 'N/A'}</b><br>"
+                              f"Score: {article.sentiment_score:.2f if article.sentiment_score else 0:.2f}<br>"
+                              f"Confidence: {article.confidence:.1%if article.confidence else 0:.1%}"
                               f"</div>", unsafe_allow_html=True)
     else:
         st.info("Belum ada artikel. Jalankan scraper terlebih dahulu.")
@@ -222,12 +197,12 @@ def main():
         st.header("📉 Sentiment Over Time")
         
         timeline_data = []
-        for article, sentiment in articles:
-            if article.published_date:
+        for article in articles:
+            if article.published_date and article.sentiment_label:
                 timeline_data.append({
                     'date': article.published_date,
-                    'sentiment': sentiment.sentiment_score,
-                    'label': sentiment.sentiment_label
+                    'sentiment': article.sentiment_score,
+                    'label': article.sentiment_label
                 })
         
         if timeline_data:
@@ -255,41 +230,6 @@ def main():
             
             fig_timeline.update_layout(height=400)
             st.plotly_chart(fig_timeline, use_container_width=True)
-
-
-def display_signals(signals, signal_type=None):
-    """Display screening signals in a table"""
-    if not signals:
-        st.info(f"No {signal_type or 'signals'} found")
-        return
-    
-    signal_data = []
-    for signal, stock in signals:
-        signal_data.append({
-            'Ticker': stock.ticker,
-            'Company': stock.company_name or 'N/A',
-            'Signal': signal.signal_type,
-            'Strength': f"{signal.signal_strength:.2f}",
-            'Avg Sentiment': f"{signal.avg_sentiment:.2f}",
-            'Articles': signal.article_count,
-            'Timeframe': f"{signal.timeframe_days}d",
-            'Generated': signal.generated_date.strftime('%d %b %Y')
-        })
-    
-    df = pd.DataFrame(signal_data)
-    
-    # Color code signals
-    def color_signal(val):
-        if val == 'BUY':
-            return 'background-color: #d4edda'
-        elif val == 'SELL':
-            return 'background-color: #f8d7da'
-        else:
-            return 'background-color: #fff3cd'
-    
-    styled_df = df.style.applymap(color_signal, subset=['Signal'])
-    
-    st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
 
 if __name__ == "__main__":
