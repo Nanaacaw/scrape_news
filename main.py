@@ -197,6 +197,9 @@ def main():
     # Dashboard command
     dashboard_parser = subparsers.add_parser('dashboard', help='Launch dashboard')
     
+    # Scheduler command
+    scheduler_parser = subparsers.add_parser('scheduler', help='Run automated periodic scraping')
+    
     args = parser.parse_args()
     
     if not args.command:
@@ -217,6 +220,9 @@ def main():
         elif args.command == 'dashboard':
             import subprocess
             subprocess.run(['streamlit', 'run', 'src/dashboard/app.py'])
+        elif args.command == 'scheduler':
+            from src.scraper.scheduler import run_scheduler
+            run_scheduler()
     
     except Exception as e:
         logger.error(f"Command failed: {e}")

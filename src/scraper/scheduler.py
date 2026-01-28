@@ -1,6 +1,14 @@
 """
 Automated scheduler for periodic scraping
 """
+import sys
+from pathlib import Path
+
+# Add project root to Python path for direct execution
+project_root = Path(__file__).parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime
@@ -22,11 +30,21 @@ def scheduled_scrape_job():
         scraper = CNBCScraper()
         pipeline = DataPipeline()
         
-        # Scrape articles
-        articles = scraper.scrape_all()
+        # Import config for scraping parameters
+        from src.utils.config import MAX_ARTICLES_PER_SCRAPE
+        
+        # Scrape articles (configurable via .env)
+        # Default: 50 articles per run, 1 page
+        # Can be adjusted in .env: MAX_ARTICLES_PER_SCRAPE
+        max_pages = 1  # Conservative for scheduled runs to avoid rate limiting
+        
+        articles = scraper.scrape_all(
+            max_articles_per_category=MAX_ARTICLES_PER_SCRAPE,
+            max_pages=max_pages
+        )
         logger.info(f"Scraped {len(articles)} articles")
         
-        # Process through pipeline
+        # Process through pipeline (includes ticker extraction + sentiment analysis)
         with get_db() as db:
             new_count = pipeline.process_articles(db, articles)
             logger.info(f"Processed {new_count} new articles")
