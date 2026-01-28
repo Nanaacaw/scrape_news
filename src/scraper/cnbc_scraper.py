@@ -29,47 +29,78 @@ class CNBCScraper:
         })
         self.base_url = CNBC_BASE_URL
         
-    def scrape_category(self, category_url: str, max_articles: int = MAX_ARTICLES_PER_SCRAPE) -> List[Dict]:
+    def scrape_category(self, category_url: str, max_articles: int = MAX_ARTICLES_PER_SCRAPE, max_pages: int = 1) -> List[Dict]:
         """
-        Scrape articles from a category page
+        Scrape articles from a category page with pagination support
         
         Args:
             category_url: URL of the category page
-            max_articles: Maximum number of articles to scrape
+            max_articles: Maximum number of articles to scrape total
+            max_pages: Maximum number of pages to scrape  
             
         Returns:
             List of article dictionaries
         """
-        articles = []
+        all_articles = []
+        articles_scraped = 0
         
-        try:
-            logger.info(f"Scraping category: {category_url}")
-            response = self.session.get(category_url, timeout=REQUEST_TIMEOUT)
-            response.raise_for_status()
+        for page_num in range(1, max_pages + 1):
+            # CNBC pagination format: ?page=2, ?page=3, etc.
+            if page_num == 1:
+                page_url = category_url
+            else:
+                separator = '&' if '?' in category_url else '?'
+                page_url = f"{category_url}{separator}page={page_num}"
             
-            soup = BeautifulSoup(response.content, 'lxml')
-            article_links = self._extract_article_links(soup)
-            
-            logger.info(f"Found {len(article_links)} article links")
-            
-            for i, article_url in enumerate(article_links[:max_articles]):
-                try:
-                    logger.info(f"Scraping article {i+1}/{min(len(article_links), max_articles)}: {article_url}")
-                    article_data = self.scrape_article(article_url)
-                    
-                    if article_data:
-                        articles.append(article_data)
-                        # Be respectful - add delay between requests
-                        time.sleep(1)
+            try:
+                logger.info(f"Scraping page {page_num}/{max_pages}: {page_url}")
+                response = self.session.get(page_url, timeout=REQUEST_TIMEOUT)
+                response.raise_for_status()
+                
+                soup = BeautifulSoup(response.content, 'lxml')
+                article_links = self._extract_article_links(soup)
+                
+                if not article_links:
+                    logger.info(f"No more articles found on page {page_num}, stopping pagination")
+                    break
+                
+                logger.info(f"Found {len(article_links)} article links on page {page_num}")
+                
+                # Calculate how many articles to scrape from this page
+                remaining = max_articles - articles_scraped
+                links_to_scrape = article_links[:min(len(article_links), remaining)]
+                
+                for i, article_url in enumerate(links_to_scrape):
+                    try:
+                        logger.info(f"Scraping article {articles_scraped+1}/{max_articles}: {article_url}")
+                        article_data = self.scrape_article(article_url)
                         
-                except Exception as e:
-                    logger.error(f"Failed to scrape article {article_url}: {e}")
-                    continue
-                    
-        except Exception as e:
-            logger.error(f"Failed to scrape category {category_url}: {e}")
-            
-        return articles
+                        if article_data:
+                            all_articles.append(article_data)
+                            articles_scraped += 1
+                            
+                            # Stop if we've reached max_articles
+                            if articles_scraped >= max_articles:
+                                logger.info(f"Reached maximum articles limit ({max_articles})")
+                                return all_articles
+                            
+                            # Be respectful - add delay between requests
+                            time.sleep(1)
+                            
+                    except Exception as e:
+                        logger.error(f"Failed to scrape article {article_url}: {e}")
+                        continue
+                
+                # Add delay between pages
+                if page_num < max_pages:
+                    time.sleep(2)
+                        
+            except Exception as e:
+                logger.error(f"Failed to scrape page {page_url}: {e}")
+                break
+                
+        logger.info(f"Total articles scraped: {len(all_articles)} from {page_num} page(s)")
+        return all_articles
     
     def _extract_article_links(self, soup: BeautifulSoup) -> List[str]:
         """Extract article URLs from category page"""
@@ -249,18 +280,18 @@ class CNBCScraper:
         
         return None
     
-    def scrape_market_news(self, max_articles: int = MAX_ARTICLES_PER_SCRAPE) -> List[Dict]:
+    def scrape_market_news(self, max_articles: int = MAX_ARTICLES_PER_SCRAPE, max_pages: int = 1) -> List[Dict]:
         """Scrape market news from CNBC Indonesia"""
-        return self.scrape_category(CNBC_MARKET_URL, max_articles)
+        return self.scrape_category(CNBC_MARKET_URL, max_articles, max_pages)
     
-    def scrape_investment_news(self, max_articles: int = MAX_ARTICLES_PER_SCRAPE) -> List[Dict]:
+    def scrape_investment_news(self, max_articles: int = MAX_ARTICLES_PER_SCRAPE, max_pages: int = 1) -> List[Dict]:
         """Scrape investment news from CNBC Indonesia"""
-        return self.scrape_category(CNBC_INVESTMENT_URL, max_articles)
+        return self.scrape_category(CNBC_INVESTMENT_URL, max_articles, max_pages)
     
-    def scrape_all(self, max_articles_per_category: int = MAX_ARTICLES_PER_SCRAPE) -> List[Dict]:
+    def scrape_all(self, max_articles_per_category: int = MAX_ARTICLES_PER_SCRAPE, max_pages: int = 1) -> List[Dict]:
         """Scrape market news only (excluding mymoney and investment)"""
-        logger.info("Scraping Market news only...")
-        articles = self.scrape_category(CNBC_MARKET_URL, max_articles_per_category)
+        logger.info(f"Scraping Market news (up to {max_pages} page(s))...")
+        articles = self.scrape_category(CNBC_MARKET_URL, max_articles_per_category, max_pages)
         logger.info(f"Scraped {len(articles)} articles from Market section")
         
         return articles

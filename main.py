@@ -28,9 +28,9 @@ def scrape_command(args):
     
     # Scrape articles
     if args.category == 'market':
-        articles = scraper.scrape_market_news(max_articles=args.limit)
+        articles = scraper.scrape_market_news(max_articles=args.limit, max_pages=args.pages)
     else:  # all (which is now just market)
-        articles = scraper.scrape_all(max_articles_per_category=args.limit)
+        articles = scraper.scrape_all(max_articles_per_category=args.limit, max_pages=args.pages)
     
     logger.info(f"Scraped {len(articles)} articles")
     
@@ -38,6 +38,7 @@ def scrape_command(args):
     with get_db() as db:
         new_count = pipeline.process_articles(db, articles)
         logger.info(f"Processed {new_count} new articles")
+
 
 
 def analyze_command(args):
@@ -164,6 +165,12 @@ def main():
         type=int,
         default=50,
         help='Maximum articles to scrape'
+    )
+    scrape_parser.add_argument(
+        '--pages',
+        type=int,
+        default=1,
+        help='Number of pages to scrape (default: 1)'
     )
     
     # Analyze command
