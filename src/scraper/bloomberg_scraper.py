@@ -78,10 +78,11 @@ class BloombergScraper(BaseScraper):
             url = self._make_absolute_url(link_tag['href'])
             
             if self.base_url in url and url not in links:
-                if not any(x in url for x in ['/indeks/', '/foto', '/video', '/infografis', '/z-zone']):
-                    path = url.replace(self.base_url, '')
-                    if len(path.split('/')) >= 3:
-                        links.append(url)
+                if not any(x in url for x in ['/indeks/', '/kanal/', '/foto', '/video', '/infografis', '/z-zone']):
+                    if '/detail-news/' in url or '/market/' in url:
+                        path = url.replace(self.base_url, '')
+                        if len(path.split('/')) >= 3:
+                            links.append(url)
         
         return links
     
