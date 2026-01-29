@@ -4,10 +4,10 @@
 
 ## 📋 Features
 
-- 🌐 **Web Scraping**: Otomatis scrape berita market & investment dari CNBC Indonesia
+- 🌐 **Web Scraping**: Otomatis scrape berita dari CNBC Indonesia & Bloomberg Technoz
 - 🤖 **Sentiment Analysis**: Analisis sentiment menggunakan IndoBERT (Bahasa Indonesia)
 - 📊 **Stock Screening**: Generate BUY/SELL/HOLD signals berdasarkan sentiment
-- 📈 **Interactive Dashboard**: Real-time visualization dengan Streamlit
+- 📈 **Stock Ticker Database**: Integrasi lengkap dengan 952 saham Indonesia dari IDX
 - ⏰ **Automated Scheduling**: Scraping otomatis dengan interval yang bisa dikustomisasi
 - 💾 **Database**: Penyimpanan data dengan SQLite
 
@@ -51,23 +51,13 @@ python main.py init
 ### 4. Run First Scrape
 
 ```bash
-# Scrape all categories (market + investment)
-python main.py scrape --limit 10 --generate-signals
+# Scrape from both CNBC and Bloomberg
+python main.py scrape --source all --limit 10
 
-# Atau scrape specific category:
-# python main.py scrape --category market --limit 20
+# Or scrape specific source:
+# python main.py scrape --source cnbc --limit 20
+# python main.py scrape --source bloomberg --limit 20
 ```
-
-### 5. Launch Dashboard
-
-```bash
-python main.py dashboard
-
-# Atau langsung:
-# streamlit run src/dashboard/app.py
-```
-
-Dashboard akan terbuka di browser: `http://localhost:8501`
 
 ## 📖 Usage Guide
 
@@ -77,29 +67,30 @@ Dashboard akan terbuka di browser: `http://localhost:8501`
 # Initialize database
 python main.py init
 
-# Scrape news articles
-python main.py scrape --category all --limit 50 --generate-signals
+# Scrape news articles from both sources
+python main.py scrape --source all --limit 50
+
+# Scrape from specific source
+python main.py scrape --source cnbc --limit 30
+python main.py scrape --source bloomberg --limit 30
 
 # Run sentiment analysis on existing articles
 python main.py analyze
 
-# Generate screening signals
-python main.py screen --show --limit 10
+# Search for specific stock ticker
+python main.py search --ticker BBRI --limit 10
 
 # Show database statistics
 python main.py stats
-
-# Launch dashboard
-python main.py dashboard
 ```
 
 ### Scraping Options
 
-| Category | URL | Description |
-|----------|-----|-------------|
-| `market` | cnbcindonesia.com/market | Market news & analysis |
-| `investment` | cnbcindonesia.com/investment | Investment tips & insights |
-| `all` | Both categories | Comprehensive coverage |
+| Source | URL | Description |
+|--------|-----|-------------|
+| `cnbc` | cnbcindonesia.com/market | CNBC Indonesia Market news |
+| `bloomberg` | bloombergtechnoz.com/indeks/market | Bloomberg Technoz Market news |
+| `all` | Both sources | Comprehensive coverage |
 
 ### Automated Scheduling
 
@@ -196,54 +187,21 @@ scrape_news/
 └── models/                      # Cached models (auto-created)
 ```
 
-## ⚙️ Configuration
+## 📊 Stock Ticker Integration
 
-Edit `.env` file untuk customize behavior:
+### Complete IDX Database
+- **952 Indonesian stocks** from Bursa Efek Indonesia (BEI/IDX)
+- Automatic ticker extraction from news articles
+- Company name resolution from `data/idx_stonks.csv`
+- Smart filtering to avoid false positives from Indonesian words
 
-```bash
-# Scraping
-SCRAPE_INTERVAL_HOURS=1          # Interval untuk automated scraping
-MAX_ARTICLES_PER_SCRAPE=50       # Max articles per scraping session
-REQUEST_TIMEOUT=30               # HTTP request timeout (seconds)
-
-# Sentiment Analysis
-SENTIMENT_MODEL=indobenchmark/indobert-base-p1
-SENTIMENT_BATCH_SIZE=8           # Batch size untuk sentiment analysis
-
-# Screening
-MIN_SENTIMENT_SCORE=0.3          # Minimum sentiment untuk signal
-MIN_ARTICLES_FOR_SIGNAL=3        # Minimum articles untuk generate signal
-SIGNAL_TIMEFRAME_DAYS=7          # Timeframe untuk screening (days)
-
-# Logging
-LOG_LEVEL=INFO                   # DEBUG, INFO, WARNING, ERROR
-```
-
-## 📊 Dashboard Features
-
-### Overview Metrics
-- Total articles scraped
-- Average sentiment score
-- Positive/negative news count
-
-### Sentiment Distribution
-- Pie chart showing sentiment breakdown
-- Positive, neutral, negative percentages
-
-### Screening Signals
-- **BUY signals**: Stocks with strong positive sentiment
-- **SELL signals**: Stocks with strong negative sentiment
-- Signal strength and confidence metrics
-
-### Recent Articles
-- Latest news with sentiment analysis
-- Direct links to original articles
-- Category and author information
-
-### Sentiment Timeline
-- Trend analysis over time
-- Interactive charts with thresholds
-- Bullish/bearish indicators
+### Supported Tickers
+All stocks listed on IDX including:
+- **Banking**: BBRI, BBCA, BMRI, BBNI, BNGA, etc.
+- **Technology**: GOTO, BUKA, TLKM, EXCL, etc.
+- **Consumer**: UNVR, INDF, ICBP, KLBF, etc.
+- **Energy**: PGAS, ADRO, PTBA, ITMG, etc.
+- And 900+ more...
 
 ## 🎯 Signal Generation Logic
 
@@ -307,10 +265,10 @@ python -c "from transformers import AutoTokenizer, AutoModelForSequenceClassific
 ## 🛠️ Tech Stack
 
 - **Python 3.9+**
-- **Web Scraping**: Requests + BeautifulSoup4
+- **Web Scraping**: Requests + BeautifulSoup4  
 - **Database**: SQLite + SQLAlchemy
 - **Sentiment**: Transformers (HuggingFace) + IndoBERT
-- **Dashboard**: Streamlit + Plotly
+- **Stock Data**: 952 Indonesian stocks from IDX (idx_stonks.csv)
 - **Scheduling**: APScheduler
 - **Logging**: Loguru
 

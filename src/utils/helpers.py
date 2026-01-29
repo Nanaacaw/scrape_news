@@ -1,25 +1,50 @@
-"""
-Helper utilities
-"""
 from datetime import datetime, timedelta
 import re
-from typing import Optional, List
+from typing import Optional, List, Dict, Set
+import os
+from pathlib import Path
+import pandas as pd
 
 def clean_text(text: str) -> str:
-    """Clean and normalize text"""
     if not text:
         return ""
     
-    # Remove extra whitespace
     text = re.sub(r'\s+', ' ', text)
-    # Remove special characters but keep Indonesian letters
     text = re.sub(r'[^\w\s\-.,!?()]', '', text)
     return text.strip()
+
+_STOCK_TICKERS_CACHE: Optional[Dict[str, str]] = None
+
+def load_idx_stocks() -> Dict[str, str]:
+    global _STOCK_TICKERS_CACHE
+    
+    if _STOCK_TICKERS_CACHE is not None:
+        return _STOCK_TICKERS_CACHE
+    
+    base_dir = Path(__file__).parent.parent.parent
+    csv_path = base_dir / 'data' / 'idx_stonks.csv'
+    
+    if not csv_path.exists():
+        raise FileNotFoundError(f"Stock data file not found: {csv_path}")
+    
+    try:
+        df = pd.read_csv(csv_path)
+        
+        _STOCK_TICKERS_CACHE = {}
+        for _, row in df.iterrows():
+            ticker = str(row['code']).strip().upper()
+            company_name = str(row['name']).strip() if 'name' in row and pd.notna(row['name']) else None
+            _STOCK_TICKERS_CACHE[ticker] = company_name
+        
+        return _STOCK_TICKERS_CACHE
+        
+    except Exception as e:
+        raise RuntimeError(f"Failed to load stock data from CSV: {e}")
 
 def extract_stock_tickers(text: str) -> List[str]:
     """
     Extract stock tickers from text (Indonesian stock market: BEI/IDX)
-    Tickers are typically 4-letter uppercase codes
+    Uses the complete list of 952 Indonesian stocks from idx_stonks.csv
     
     Returns:
         List of unique ticker symbols found in text
@@ -27,42 +52,34 @@ def extract_stock_tickers(text: str) -> List[str]:
     if not text:
         return []
     
-    # Common Indonesian stock tickers (partial list for better accuracy)
-    # This helps reduce false positives
-    known_tickers = {
-        # Banking
-        'BBRI', 'BBCA', 'BMRI', 'BBNI', 'BBTN', 'BNGA', 'NISP', 'BNLI', 'MEGA', 'BRIS',
-        # Telecom
-        'TLKM', 'EXCL', 'ISAT', 'FREN',
-        # Energy
-        'PGAS', 'MEDC', 'ELSA', 'AKRA', 'ADRO', 'PTBA', 'ITMG', 'HRUM',
-        # Consumer
-        'UNVR', 'INDF', 'ICBP', 'MYOR', 'KLBF', 'SIDO', 'KAEF', 'GGRM', 'HMSP',
-        # Tech & Media
-        'GOTO', 'BUKA', 'EMTK', 'MNCN',
-        # Property
-        'BSDE', 'CTRA', 'PWON', 'ASRI', 'LPKR', 'SMRA',
-        # Automotive
-        'ASII', 'AUTO', 'IMAS', 'SMSM',
-        # Retail
-        'ACES', 'ERAA', 'LPPF', 'MAPI', 'RALS',
-        # Construction
-        'WIKA', 'WSKT', 'PTPP', 'ADHI', 'TOTL',
-        # Mining
-        'ANTM', 'INCO', 'TINS', 'MDKA',
-        # Conglomerate
-        'AALI', 'JSMR', 'UNTR', 'BUMI',
-    }
+    try:
+        valid_tickers = set(load_idx_stocks().keys())
+    except Exception as e:
+        print(f"Warning: Could not load stock tickers: {e}")
+        return []
     
-    # Find all 4-letter uppercase words
     pattern = r'\b[A-Z]{4}\b'
     potential_tickers = re.findall(pattern, text)
     
-    # Filter to only known tickers to reduce false positives
-    # (e.g., "YANG", "AKAN", "DARI" are common Indonesian words)
-    tickers = [t for t in potential_tickers if t in known_tickers]
+    tickers = [t for t in potential_tickers if t in valid_tickers]
     
-    return list(set(tickers))  # Return unique tickers
+    return list(set(tickers))
+
+def get_stock_name(ticker: str) -> Optional[str]:
+    """
+    Get company name for a stock ticker
+    
+    Args:
+        ticker: Stock ticker code (e.g., 'BBRI')
+        
+    Returns:
+        Company name or None if not found
+    """
+    try:
+        stocks = load_idx_stocks()
+        return stocks.get(ticker.upper())
+    except Exception:
+        return None
 
 def parse_indonesian_date(date_str: str) -> Optional[datetime]:
     """
@@ -85,10 +102,8 @@ def parse_indonesian_date(date_str: str) -> Optional[datetime]:
     }
     
     try:
-        # Remove day name if present
         date_str = re.sub(r'^[A-Za-z]+,\s*', '', date_str)
         
-        # Extract day, month, year
         pattern = r'(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})'
         match = re.search(pattern, date_str, re.IGNORECASE)
         

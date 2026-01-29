@@ -1,6 +1,3 @@
-"""
-CNBC Indonesia Web Scraper
-"""
 import requests
 from bs4 import BeautifulSoup
 from typing import List, Dict, Optional
@@ -8,6 +5,7 @@ from datetime import datetime
 import time
 import re
 
+from src.scraper.base_scraper import BaseScraper
 from src.utils.config import (
     CNBC_BASE_URL, CNBC_MARKET_URL, CNBC_INVESTMENT_URL,
     REQUEST_TIMEOUT, USER_AGENT, MAX_ARTICLES_PER_SCRAPE
@@ -17,17 +15,11 @@ from src.utils.helpers import clean_text, parse_indonesian_date
 
 logger = get_logger(__name__)
 
-class CNBCScraper:
+class CNBCScraper(BaseScraper):
     """CNBC Indonesia news scraper"""
     
     def __init__(self):
-        self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': USER_AGENT,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
-        })
-        self.base_url = CNBC_BASE_URL
+        super().__init__(CNBC_BASE_URL)
         
     def scrape_category(self, category_url: str, max_articles: int = MAX_ARTICLES_PER_SCRAPE, max_pages: int = 1) -> List[Dict]:
         """
@@ -66,7 +58,6 @@ class CNBCScraper:
                 
                 logger.info(f"Found {len(article_links)} article links on page {page_num}")
                 
-                # Calculate how many articles to scrape from this page
                 remaining = max_articles - articles_scraped
                 links_to_scrape = article_links[:min(len(article_links), remaining)]
                 
@@ -79,19 +70,16 @@ class CNBCScraper:
                             all_articles.append(article_data)
                             articles_scraped += 1
                             
-                            # Stop if we've reached max_articles
                             if articles_scraped >= max_articles:
                                 logger.info(f"Reached maximum articles limit ({max_articles})")
                                 return all_articles
                             
-                            # Be respectful - add delay between requests
                             time.sleep(1)
                             
                     except Exception as e:
                         logger.error(f"Failed to scrape article {article_url}: {e}")
                         continue
                 
-                # Add delay between pages
                 if page_num < max_pages:
                     time.sleep(2)
                         
@@ -106,10 +94,6 @@ class CNBCScraper:
         """Extract article URLs from category page"""
         links = []
         
-        # CNBC Indonesia typically uses <article> tags or divs with specific classes
-        # This is a generic approach - may need adjustment based on actual HTML structure
-        
-        # Try finding links in article tags
         for article in soup.find_all('article'):
             link_tag = article.find('a', href=True)
             if link_tag:
@@ -119,7 +103,6 @@ class CNBCScraper:
                 if url not in links and self.base_url in url:
                     links.append(url)
         
-        # Also try common class patterns
         for div in soup.find_all('div', class_=re.compile(r'(article|post|news|list).*item', re.I)):
             link_tag = div.find('a', href=True)
             if link_tag:
@@ -144,7 +127,6 @@ class CNBCScraper:
             
             soup = BeautifulSoup(response.content, 'lxml')
             
-            # Extract article data
             title = self._extract_title(soup)
             content = self._extract_content(soup)
             author = self._extract_author(soup)
@@ -171,97 +153,6 @@ class CNBCScraper:
         except Exception as e:
             logger.error(f"Failed to scrape article {article_url}: {e}")
             return None
-    
-    def _extract_title(self, soup: BeautifulSoup) -> Optional[str]:
-        """Extract article title"""
-        # Try multiple selectors
-        selectors = [
-            ('h1', {'class': re.compile(r'(title|headline)', re.I)}),
-            ('h1', {}),
-            ('meta', {'property': 'og:title'}),
-        ]
-        
-        for tag, attrs in selectors:
-            element = soup.find(tag, attrs)
-            if element:
-                if tag == 'meta':
-                    return element.get('content', '').strip()
-                return element.get_text(strip=True)
-        
-        return None
-    
-    def _extract_content(self, soup: BeautifulSoup) -> Optional[str]:
-        """Extract article content"""
-        # Try multiple selectors for article body
-        selectors = [
-            ('div', {'class': re.compile(r'(article.*body|content.*body|detail.*content)', re.I)}),
-            ('article', {}),
-            ('div', {'itemprop': 'articleBody'}),
-        ]
-        
-        for tag, attrs in selectors:
-            element = soup.find(tag, attrs)
-            if element:
-                # Remove script and style tags
-                for script in element(['script', 'style', 'aside', 'nav']):
-                    script.decompose()
-                    
-                paragraphs = element.find_all('p')
-                content = ' '.join([p.get_text(strip=True) for p in paragraphs])
-                
-                if len(content) > 100:  # Ensure we have substantial content
-                    return content
-        
-        return None
-    
-    def _extract_author(self, soup: BeautifulSoup) -> Optional[str]:
-        """Extract article author"""
-        selectors = [
-            ('span', {'class': re.compile(r'author', re.I)}),
-            ('a', {'rel': 'author'}),
-            ('meta', {'name': 'author'}),
-        ]
-        
-        for tag, attrs in selectors:
-            element = soup.find(tag, attrs)
-            if element:
-                if tag == 'meta':
-                    return element.get('content', '').strip()
-                return element.get_text(strip=True)
-        
-        return None
-    
-    def _extract_date(self, soup: BeautifulSoup) -> Optional[datetime]:
-        """Extract article published date"""
-        selectors = [
-            ('time', {'datetime': True}),
-            ('span', {'class': re.compile(r'(date|time|publish)', re.I)}),
-            ('meta', {'property': 'article:published_time'}),
-        ]
-        
-        for tag, attrs in selectors:
-            element = soup.find(tag, attrs)
-            if element:
-                if tag == 'time':
-                    date_str = element.get('datetime', '')
-                    try:
-                        return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-                    except:
-                        pass
-                
-                elif tag == 'meta':
-                    date_str = element.get('content', '')
-                    try:
-                        return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-                    except:
-                        pass
-                else:
-                    date_str = element.get_text(strip=True)
-                    parsed_date = parse_indonesian_date(date_str)
-                    if parsed_date:
-                        return parsed_date
-        
-        return None
     
     def _extract_category(self, soup: BeautifulSoup) -> Optional[str]:
         """Extract article category"""

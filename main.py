@@ -6,6 +6,7 @@ import sys
 
 from src.database.connection import init_database, get_db
 from src.scraper.cnbc_scraper import CNBCScraper
+from src.scraper.bloomberg_scraper import BloombergScraper
 from src.pipeline.data_pipeline import DataPipeline
 from src.utils.logger import get_logger
 
@@ -23,22 +24,39 @@ def scrape_command(args):
     """Run scraper"""
     logger.info("Starting scraper...")
     
-    scraper = CNBCScraper()
     pipeline = DataPipeline()
+    all_articles = []
     
-    # Scrape articles
-    if args.category == 'market':
-        articles = scraper.scrape_market_news(max_articles=args.limit, max_pages=args.pages)
-    else:  # all (which is now just market)
-        articles = scraper.scrape_all(max_articles_per_category=args.limit, max_pages=args.pages)
+    sources = []
+    if args.source in ['cnbc', 'all']:
+        sources.append(('CNBC', CNBCScraper()))
+    if args.source in ['bloomberg', 'all']:
+        sources.append(('Bloomberg', BloombergScraper()))
     
-    logger.info(f"Scraped {len(articles)} articles")
+    for source_name, scraper in sources:
+        logger.info(f"Scraping from {source_name}...")
+        
+        if args.pages:
+            max_pages = args.pages
+        else:
+            if source_name == 'CNBC':
+                max_pages = max(1, (args.limit + 9) // 10)
+            else:
+                max_pages = 1
+        
+        if args.category == 'market':
+            articles = scraper.scrape_market_news(max_articles=args.limit, max_pages=max_pages)
+        else:
+            articles = scraper.scrape_all(max_articles_per_category=args.limit, max_pages=max_pages)
+        
+        logger.info(f"Scraped {len(articles)} articles from {source_name}")
+        all_articles.extend(articles)
     
-    # Process through pipeline
+    logger.info(f"Total scraped: {len(all_articles)} articles")
+    
     with get_db() as db:
-        new_count = pipeline.process_articles(db, articles)
+        new_count = pipeline.process_articles(db, all_articles)
         logger.info(f"Processed {new_count} new articles")
-
 
 
 def analyze_command(args):
@@ -50,7 +68,6 @@ def analyze_command(args):
     with get_db() as db:
         from src.database.models import Article
         
-        # Get articles without sentiment
         articles = db.query(Article).filter(Article.sentiment_label.is_(None)).all()
         
         if not articles:
@@ -70,7 +87,6 @@ def search_command(args):
         
         ticker = args.ticker.upper()
         
-        # Search articles that contain the ticker
         articles = db.query(Article).filter(
             or_(
                 Article.tickers.like(f'%{ticker}%'),
@@ -88,7 +104,6 @@ def search_command(args):
         print(f"{'='*80}")
         print(f"Found {len(articles)} articles\n")
         
-        # Calculate sentiment stats
         sentiments = [a.sentiment_score for a in articles if a.sentiment_score]
         if sentiments:
             avg_sentiment = sum(sentiments) / len(sentiments)
@@ -103,7 +118,6 @@ def search_command(args):
             print(f"   Neutral:  {neutral} ({neutral/len(articles)*100:.1f}%)")
             print()
         
-        # Show articles
         print(f"📰 Recent Articles:")
         print(f"{'-'*80}")
         
@@ -149,11 +163,15 @@ def main():
     
     subparsers = parser.add_subparsers(dest='command', help='Command to run')
     
-    # Init command
     subparsers.add_parser('init', help='Initialize database')
     
-    # Scrape command
     scrape_parser = subparsers.add_parser('scrape', help='Scrape news articles')
+    scrape_parser.add_argument(
+        '--source',
+        choices=['cnbc', 'bloomberg', 'all'],
+        default='all',
+        help='News source to scrape (default: all)'
+    )
     scrape_parser.add_argument(
         '--category',
         choices=['market', 'all'],
@@ -164,19 +182,17 @@ def main():
         '--limit',
         type=int,
         default=50,
-        help='Maximum articles to scrape'
+        help='Maximum articles to scrape per source'
     )
     scrape_parser.add_argument(
         '--pages',
         type=int,
-        default=1,
-        help='Number of pages to scrape (default: 1)'
+        default=None,
+        help='Number of pages to scrape (auto-calculated from limit if not specified)'
     )
     
-    # Analyze command
-    analyze_parser = subparsers.add_parser('analyze', help='Run sentiment analysis')
+    subparsers.add_parser('analyze', help='Run sentiment analysis')
     
-    # Search command
     search_parser = subparsers.add_parser('search', help='Search articles by ticker')
     search_parser.add_argument(
         '--ticker',
@@ -191,14 +207,9 @@ def main():
         help='Maximum number of articles to display'
     )
     
-    # Stats command
-    stats_parser = subparsers.add_parser('stats', help='Show database statistics')
+    subparsers.add_parser('stats', help='Show database statistics')
     
-    # Dashboard command
-    dashboard_parser = subparsers.add_parser('dashboard', help='Launch dashboard')
-    
-    # Scheduler command
-    scheduler_parser = subparsers.add_parser('scheduler', help='Run automated periodic scraping')
+    subparsers.add_parser('scheduler', help='Run automated periodic scraping')
     
     args = parser.parse_args()
     
@@ -217,9 +228,6 @@ def main():
             search_command(args)
         elif args.command == 'stats':
             stats_command(args)
-        elif args.command == 'dashboard':
-            import subprocess
-            subprocess.run(['streamlit', 'run', 'src/dashboard/app.py'])
         elif args.command == 'scheduler':
             from src.scraper.scheduler import run_scheduler
             run_scheduler()
