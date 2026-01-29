@@ -1,12 +1,11 @@
 # CNBC Market Scraping + Sentiment Analysis
 
-> **Stock screening system** yang mengintegrasikan web scraping dari CNBC Indonesia dengan sentiment analysis menggunakan IndoBERT untuk mendukung keputusan investasi.
+> **News sentiment analysis system** yang mengintegrasikan web scraping dari CNBC Indonesia & Bloomberg Technoz dengan sentiment analysis menggunakan IndoBERT untuk analisis berita pasar.
 
 ## 📋 Features
 
 - 🌐 **Web Scraping**: Otomatis scrape berita dari CNBC Indonesia & Bloomberg Technoz
 - 🤖 **Sentiment Analysis**: Analisis sentiment menggunakan IndoBERT (Bahasa Indonesia)
-- 📊 **Stock Screening**: Generate BUY/SELL/HOLD signals berdasarkan sentiment
 - 📈 **Stock Ticker Database**: Integrasi lengkap dengan 952 saham Indonesia dari IDX
 - ⏰ **Automated Scheduling**: Scraping otomatis dengan interval yang bisa dikustomisasi
 - 💾 **Database**: Penyimpanan data dengan SQLite
@@ -168,14 +167,11 @@ scrape_news/
 │   ├── sentiment/
 │   │   └── analyzer.py         # IndoBERT sentiment analyzer
 │   │
-│   ├── screening/
-│   │   └── screener.py         # Stock screening logic
-│   │
 │   ├── pipeline/
 │   │   └── data_pipeline.py    # Data processing pipeline
 │   │
 │   ├── dashboard/
-│   │   └── app.py              # Streamlit dashboard
+│   │   └── app.py              # Streamlit dashboard (REMOVED)
 │   │
 │   └── utils/
 │       ├── config.py           # Configuration
