@@ -105,9 +105,10 @@ def health_check(db: Session = Depends(get_db)):
     API health check
     """
     try:
-        db.execute("SELECT 1")
+        from sqlalchemy import text
+        db.execute(text("SELECT 1"))
         db_status = "connected"
-    except:
+    except Exception as e:
         db_status = "disconnected"
     
     return HealthResponse(
@@ -115,3 +116,4 @@ def health_check(db: Session = Depends(get_db)):
         database=db_status,
         timestamp=datetime.now()
     )
+

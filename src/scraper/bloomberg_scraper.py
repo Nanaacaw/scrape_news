@@ -102,7 +102,7 @@ class BloombergScraper(BaseScraper):
             title = self._extract_title(soup)
             content = self._extract_content(soup)
             author = self._extract_author(soup)
-            published_date = self._extract_date(soup)
+            published_date = self._extract_date(soup, article_url)
             category = self._extract_category(soup, article_url)
             
             if not title or not content:
@@ -116,7 +116,7 @@ class BloombergScraper(BaseScraper):
                 'content': clean_text(content),
                 'author': clean_text(author) if author else None,
                 'category': category,
-                'published_date': published_date,
+                'published_date': published_date if published_date else datetime.now(),
                 'scraped_date': datetime.now()
             }
             
