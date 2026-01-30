@@ -1,10 +1,6 @@
-"""
-Automated scheduler for periodic scraping
-"""
 import sys
 from pathlib import Path
 
-# Add project root to Python path for direct execution
 project_root = Path(__file__).parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
@@ -29,14 +25,9 @@ def scheduled_scrape_job():
         
         scraper = CNBCScraper()
         pipeline = DataPipeline()
-        
-        # Import config for scraping parameters
+
         from src.utils.config import MAX_ARTICLES_PER_SCRAPE
-        
-        # Scrape articles (configurable via .env)
-        # Default: 50 articles per run, 1 page
-        # Can be adjusted in .env: MAX_ARTICLES_PER_SCRAPE
-        max_pages = 1  # Conservative for scheduled runs to avoid rate limiting
+        max_pages = 1
         
         articles = scraper.scrape_all(
             max_articles_per_category=MAX_ARTICLES_PER_SCRAPE,
@@ -44,7 +35,6 @@ def scheduled_scrape_job():
         )
         logger.info(f"Scraped {len(articles)} articles")
         
-        # Process through pipeline (includes ticker extraction + sentiment analysis)
         with get_db() as db:
             new_count = pipeline.process_articles(db, articles)
             logger.info(f"Processed {new_count} new articles")
@@ -63,7 +53,6 @@ def run_scheduler():
     """
     scheduler = BlockingScheduler()
     
-    # Add job with interval trigger
     scheduler.add_job(
         scheduled_scrape_job,
         'interval',
@@ -76,7 +65,6 @@ def run_scheduler():
     logger.info(f"Scheduler started. Will run every {SCRAPE_INTERVAL_HOURS} hour(s)")
     logger.info("Press Ctrl+C to exit")
     
-    # Run once immediately
     logger.info("Running initial scrape...")
     scheduled_scrape_job()
     

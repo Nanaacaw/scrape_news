@@ -139,6 +139,7 @@ class CNBCScraper(BaseScraper):
             
             article_data = {
                 'url': article_url,
+                'source': 'cnbc',
                 'title': clean_text(title),
                 'content': clean_text(content),
                 'summary': clean_text(content[:500]) if content else None,

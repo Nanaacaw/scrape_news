@@ -24,7 +24,6 @@ class DataPipeline:
         self.sentiment_analyzer = None
     
     def _get_sentiment_analyzer(self) -> SentimentAnalyzer:
-        """Lazy load sentiment analyzer"""
         if self.sentiment_analyzer is None:
             logger.info("Initializing sentiment analyzer...")
             self.sentiment_analyzer = SentimentAnalyzer()
@@ -32,8 +31,6 @@ class DataPipeline:
     
     def process_articles(self, db: Session, articles_data: List[Dict]) -> int:
         """
-        Process scraped articles through the pipeline
-        
         Args:
             db: Database session
             articles_data: List of article dictionaries from scraper
@@ -50,22 +47,18 @@ class DataPipeline:
         new_articles_count = 0
         articles_for_processing = []
         
-        # Step 1: Save articles to database (skip duplicates)
         for article_data in articles_data:
-            # Check if article already exists
             existing = db.query(Article).filter(Article.url == article_data['url']).first()
             
             if existing:
                 logger.debug(f"Article already exists: {article_data['url']}")
                 continue
             
-            # Remove summary field if present
             article_data.pop('summary', None)
             
-            # Create new article (without sentiment and tickers yet)
             article = Article(**article_data)
             db.add(article)
-            db.flush()  # Get article ID
+            db.flush()
             
             articles_for_processing.append(article)
             new_articles_count += 1
@@ -76,10 +69,8 @@ class DataPipeline:
         if not articles_for_processing:
             return 0
         
-        # Step 2: Extract stock tickers
         self._extract_tickers(db, articles_for_processing)
         
-        # Step 3: Perform sentiment analysis and update articles
         self._analyze_sentiments(db, articles_for_processing)
         
         logger.info("Pipeline processing complete")
@@ -91,7 +82,6 @@ class DataPipeline:
         logger.info(f"Extracting tickers from {len(articles)} articles...")
         
         for article in articles:
-            # Extract from title and first 500 chars of content
             text = f"{article.title} {article.content[:500]}"
             tickers = extract_stock_tickers(text)
             
@@ -108,13 +98,10 @@ class DataPipeline:
         
         analyzer = self._get_sentiment_analyzer()
         
-        # Prepare texts for batch processing
         texts = [f"{article.title} {article.content[:500]}" for article in articles]
         
-        # Perform batch sentiment analysis
         sentiment_results = analyzer.analyze_batch(texts)
         
-        # Update articles with sentiment results
         for article, result in zip(articles, sentiment_results):
             article.sentiment_score = result['sentiment_score']
             article.sentiment_label = result['sentiment_label']

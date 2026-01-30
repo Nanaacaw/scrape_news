@@ -111,6 +111,7 @@ class BloombergScraper(BaseScraper):
             
             article_data = {
                 'url': article_url,
+                'source': 'bloomberg',
                 'title': clean_text(title),
                 'content': clean_text(content),
                 'author': clean_text(author) if author else None,

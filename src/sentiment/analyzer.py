@@ -35,11 +35,8 @@ class SentimentAnalyzer:
         logger.info(f"Using device: {self.device}")
         
         try:
-            # For IndoBERT, we'll use it as a feature extractor
-            # and apply simple sentiment classification
             self.tokenizer = AutoTokenizer.from_pretrained(model_name)
             
-            # Try to load a sentiment model, fallback to base model
             try:
                 self.model = AutoModelForSequenceClassification.from_pretrained(
                     "w11wo/indonesian-roberta-base-sentiment-classifier"
@@ -47,11 +44,10 @@ class SentimentAnalyzer:
                 self.use_sentiment_head = True
                 logger.info("Using dedicated sentiment classification model")
             except:
-                # If sentiment model not available, we'll use IndoBERT with simple heuristics
                 logger.warning("Sentiment classifier not found, using IndoBERT base model")
                 self.model = AutoModelForSequenceClassification.from_pretrained(
                     model_name,
-                    num_labels=3  # positive, neutral, negative
+                    num_labels=3
                 )
                 self.use_sentiment_head = False
             
@@ -89,7 +85,6 @@ class SentimentAnalyzer:
         """
         results = []
         
-        # Process in batches
         for i in range(0, len(texts), SENTIMENT_BATCH_SIZE):
             batch_texts = texts[i:i + SENTIMENT_BATCH_SIZE]
             batch_results = self._process_batch(batch_texts)
@@ -100,7 +95,6 @@ class SentimentAnalyzer:
     def _process_batch(self, texts: List[str]) -> List[Dict[str, float]]:
         """Process a single batch of texts"""
         try:
-            # Tokenize
             inputs = self.tokenizer(
                 texts,
                 padding=True,
@@ -109,25 +103,20 @@ class SentimentAnalyzer:
                 return_tensors='pt'
             )
             
-            # Move to device
             inputs = {k: v.to(self.device) for k, v in inputs.items()}
             
-            # Get predictions
             with torch.no_grad():
                 outputs = self.model(**inputs)
                 logits = outputs.logits
             
-            # Process predictions
             probabilities = torch.softmax(logits, dim=-1)
             predictions = torch.argmax(probabilities, dim=-1)
             confidences = torch.max(probabilities, dim=-1).values
             
-            # Convert to numpy
             predictions = predictions.cpu().numpy()
             confidences = confidences.cpu().numpy()
             probabilities = probabilities.cpu().numpy()
             
-            # Convert to sentiment scores and labels
             results = []
             for pred, conf, probs in zip(predictions, confidences, probabilities):
                 sentiment_score, sentiment_label = self._convert_prediction(pred, probs)
@@ -142,7 +131,6 @@ class SentimentAnalyzer:
             
         except Exception as e:
             logger.error(f"Failed to process batch: {e}")
-            # Return neutral sentiment as fallback
             return [
                 {
                     'sentiment_score': 0.0,
@@ -164,7 +152,6 @@ class SentimentAnalyzer:
             (sentiment_score, sentiment_label)
             sentiment_score: -1 (very negative) to 1 (very positive)
         """
-        # Map prediction to label
         label_map = {
             0: 'negative',
             1: 'neutral',
@@ -173,12 +160,9 @@ class SentimentAnalyzer:
         
         sentiment_label = label_map.get(prediction, 'neutral')
         
-        # Calculate sentiment score (-1 to 1)
-        # Score = P(positive) - P(negative)
         if len(probabilities) >= 3:
             sentiment_score = probabilities[2] - probabilities[0]
         else:
-            # Fallback for binary classification
             sentiment_score = 0.0 if prediction == 1 else (1.0 if prediction == 2 else -1.0)
         
         return sentiment_score, sentiment_label

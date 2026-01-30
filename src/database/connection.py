@@ -1,6 +1,3 @@
-"""
-Database connection and session management
-"""
 from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
@@ -10,19 +7,16 @@ from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Create SQLite engine
 DATABASE_URL = f"sqlite:///{DATABASE_FULL_PATH}"
 engine = create_engine(
     DATABASE_URL,
-    echo=False,  # Set to True for SQL query debugging
-    connect_args={"check_same_thread": False}  # Required for SQLite
+    echo=False,
+    connect_args={"check_same_thread": False}
 )
 
-# Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_database():
-    """Initialize database tables"""
     try:
         Base.metadata.create_all(bind=engine)
         logger.info(f"Database initialized at {DATABASE_FULL_PATH}")
@@ -33,8 +27,6 @@ def init_database():
 @contextmanager
 def get_db() -> Session:
     """
-    Get database session with context manager
-    
     Usage:
         with get_db() as db:
             # perform database operations
@@ -52,5 +44,4 @@ def get_db() -> Session:
         db.close()
 
 def get_db_session() -> Session:
-    """Get a new database session (remember to close it)"""
     return SessionLocal()

@@ -101,6 +101,54 @@ python src/scraper/scheduler.py
 
 Default: scrape setiap **1 jam** (bisa diatur di `.env`)
 
+## 🌐 REST API
+
+Project ini juga menyediakan RESTful API menggunakan FastAPI!
+
+### Start API Server
+
+```bash
+# Development mode
+python -m src.api.main
+
+# Production mode
+uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --workers 4
+```
+
+API Documentation: **http://localhost:8000/docs**
+
+### Quick API Examples
+
+```bash
+# Get positive articles about BBRI
+curl "http://localhost:8000/api/articles?ticker=BBRI&sentiment=positive&limit=10"
+
+# Get sentiment trend for last 30 days
+curl "http://localhost:8000/api/sentiment/trend?ticker=BBRI&days=30"
+
+# Search articles
+curl "http://localhost:8000/api/search?q=inflasi"
+
+# Get statistics
+curl "http://localhost:8000/api/stats/overview"
+```
+
+**Python example:**
+```python
+import requests
+
+# Get articles
+response = requests.get("http://localhost:8000/api/articles", params={
+    "ticker": "BBRI", 
+    "sentiment": "positive"
+})
+data = response.json()
+print(f"Found {data['total']} articles")
+```
+
+📚 **Full API Documentation:** See [API_USAGE.md](API_USAGE.md) for detailed endpoints and examples
+
+
 ## 🏗️ Architecture
 
 ```
