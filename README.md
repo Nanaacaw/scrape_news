@@ -60,6 +60,32 @@ python main.py scrape --source all --limit 10
 
 ## 📖 Usage Guide
 
+### ⚡ Quick Start with Makefile
+
+For convenience, use the provided Makefile:
+
+```bash
+# View all available commands
+make help
+
+# Common workflows
+make install          # Install dependencies
+make init            # Initialize database
+make scrape          # Scrape from all sources
+make api             # Start REST API server
+make stats           # Show statistics
+
+# Quick full setup
+make full-pipeline   # install + init + scrape + analyze + stats
+```
+
+**Available Make Commands:**
+- `make scrape-cnbc` / `make scrape-bloomberg` - Scrape specific source
+- `make search TICKER=BBRI` - Search for ticker
+- `make scheduler` - Run automated scheduler
+- `make api-prod` - Run API in production mode
+- `make clean` - Clean cache files
+
 ### CLI Commands
 
 ```bash
