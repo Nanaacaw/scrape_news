@@ -11,6 +11,7 @@ from datetime import datetime
 
 from src.database.connection import get_db
 from src.scraper.cnbc_scraper import CNBCScraper
+from src.scraper.bloomberg_scraper import BloombergScraper
 from src.pipeline.data_pipeline import DataPipeline
 from src.utils.config import SCRAPE_INTERVAL_HOURS
 from src.utils.logger import get_logger
@@ -19,24 +20,37 @@ logger = get_logger(__name__)
 
 
 def scheduled_scrape_job():
-    """Job to run periodic scraping"""
+    """Job to run periodic scraping from all sources"""
     try:
         logger.info("Starting scheduled scraping job...")
         
-        scraper = CNBCScraper()
         pipeline = DataPipeline()
-
+        all_articles = []
+        
         from src.utils.config import MAX_ARTICLES_PER_SCRAPE
         max_pages = 1
         
-        articles = scraper.scrape_all(
+        logger.info("Scraping from CNBC...")
+        cnbc_scraper = CNBCScraper()
+        cnbc_articles = cnbc_scraper.scrape_all(
             max_articles_per_category=MAX_ARTICLES_PER_SCRAPE,
             max_pages=max_pages
         )
-        logger.info(f"Scraped {len(articles)} articles")
+        logger.info(f"Scraped {len(cnbc_articles)} articles from CNBC")
+        all_articles.extend(cnbc_articles)
         
+        logger.info("Scraping from Bloomberg...")
+        bloomberg_scraper = BloombergScraper()
+        bloomberg_articles = bloomberg_scraper.scrape_all(
+            max_articles_per_category=MAX_ARTICLES_PER_SCRAPE,
+            max_pages=max_pages
+        )
+        logger.info(f"Scraped {len(bloomberg_articles)} articles from Bloomberg")
+        all_articles.extend(bloomberg_articles)
+        
+        logger.info(f"Total scraped: {len(all_articles)} articles")
         with get_db() as db:
-            new_count = pipeline.process_articles(db, articles)
+            new_count = pipeline.process_articles(db, all_articles)
             logger.info(f"Processed {new_count} new articles")
         
         logger.info("Scheduled scraping job completed successfully")
@@ -58,7 +72,7 @@ def run_scheduler():
         'interval',
         hours=SCRAPE_INTERVAL_HOURS,
         id='scrape_job',
-        name='CNBC News Scraping Job',
+        name='News Scraping Job (CNBC + Bloomberg)',
         replace_existing=True
     )
     
