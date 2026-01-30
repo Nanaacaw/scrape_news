@@ -3,22 +3,36 @@ Sentiment Analysis Engine using IndoBERT
 """
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 import numpy as np
+import re
 
 from src.utils.config import SENTIMENT_MODEL, SENTIMENT_BATCH_SIZE, SENTIMENT_MAX_LENGTH
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Keywords for heuristic adjustment
+POSITIVE_KEYWORDS = {
+    'melesat', 'terbang', 'cuan', 'laba', 'untung', 'naik', 'menguat', 
+    'bullish', 'dividen', 'akuisisi', 'ekspansi', 'rekor', 'tumbuh', 
+    'positif', 'optimis', 'hijau', 'buy', 'meningkat', 'profit'
+}
+
+NEGATIVE_KEYWORDS = {
+    'anjlok', 'terjun', 'rugi', 'boncos', 'turun', 'melemah', 
+    'bearish', 'bangkrut', 'pailit', 'utang', 'koreksi', 'negatif', 
+    'pesimis', 'merah', 'sell', 'gagal', 'anjlog', 'longsor', 'merosot'
+}
+
 class SentimentAnalyzer:
     """
     Sentiment analyzer using IndoBERT pre-trained model
     
     Sentiment labels:
-    - positive: score > 0.3
-    - negative: score < -0.3
-    - neutral: -0.3 <= score <= 0.3
+    - positive: score > 0.15 (adjusted from 0.3)
+    - negative: score < -0.15 (adjusted from -0.3)
+    - neutral: -0.15 <= score <= 0.15
     """
     
     def __init__(self, model_name: str = SENTIMENT_MODEL):
@@ -62,117 +76,134 @@ class SentimentAnalyzer:
     
     def analyze_text(self, text: str) -> Dict[str, float]:
         """
-        Analyze sentiment of a single text
-        
-        Args:
-            text: Text to analyze
-            
-        Returns:
-            Dictionary with sentiment_score, sentiment_label, and confidence
+        Analyze sentiment of a single text with sliding window for long texts
         """
-        results = self.analyze_batch([text])
-        return results[0] if results else None
+        return self._analyze_single_with_chunking(text)
     
     def analyze_batch(self, texts: List[str]) -> List[Dict[str, float]]:
         """
-        Analyze sentiment of multiple texts in batch
-        
-        Args:
-            texts: List of texts to analyze
-            
-        Returns:
-            List of dictionaries with sentiment results
+        Analyze sentiment of multiple texts
+        Now processes each text with chunking to ensure accuracy
         """
         results = []
-        
-        for i in range(0, len(texts), SENTIMENT_BATCH_SIZE):
-            batch_texts = texts[i:i + SENTIMENT_BATCH_SIZE]
-            batch_results = self._process_batch(batch_texts)
-            results.extend(batch_results)
-        
-        return results
-    
-    def _process_batch(self, texts: List[str]) -> List[Dict[str, float]]:
-        """Process a single batch of texts"""
-        try:
-            inputs = self.tokenizer(
-                texts,
-                padding=True,
-                truncation=True,
-                max_length=SENTIMENT_MAX_LENGTH,
-                return_tensors='pt'
-            )
-            
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}
-            
-            with torch.no_grad():
-                outputs = self.model(**inputs)
-                logits = outputs.logits
-            
-            probabilities = torch.softmax(logits, dim=-1)
-            predictions = torch.argmax(probabilities, dim=-1)
-            confidences = torch.max(probabilities, dim=-1).values
-            
-            predictions = predictions.cpu().numpy()
-            confidences = confidences.cpu().numpy()
-            probabilities = probabilities.cpu().numpy()
-            
-            results = []
-            for pred, conf, probs in zip(predictions, confidences, probabilities):
-                sentiment_score, sentiment_label = self._convert_prediction(pred, probs)
-                
+        # Process sequentially to manage memory with chunking
+        # (A single long article might spawn multiple chunks)
+        for text in texts:
+            try:
+                res = self._analyze_single_with_chunking(text)
+                results.append(res)
+            except Exception as e:
+                logger.error(f"Error analyzing text: {e}")
                 results.append({
-                    'sentiment_score': float(sentiment_score),
-                    'sentiment_label': sentiment_label,
-                    'confidence': float(conf)
-                })
-            
-            return results
-            
-        except Exception as e:
-            logger.error(f"Failed to process batch: {e}")
-            return [
-                {
                     'sentiment_score': 0.0,
                     'sentiment_label': 'neutral',
                     'confidence': 0.0
-                }
-                for _ in texts
-            ]
+                })
+        return results
     
-    def _convert_prediction(self, prediction: int, probabilities: np.ndarray) -> Tuple[float, str]:
+    def _analyze_single_with_chunking(self, text: str) -> Dict[str, float]:
         """
-        Convert model prediction to sentiment score and label
+        Analyze a single text using sliding window approach
+        """
+        if not text:
+            return {'sentiment_score': 0.0, 'sentiment_label': 'neutral', 'confidence': 0.0}
+
+        # Tokenize with sliding window
+        # stride=128 means 128 tokens overlap between chunks
+        inputs = self.tokenizer(
+            text,
+            padding=True,
+            truncation=True,
+            max_length=SENTIMENT_MAX_LENGTH,
+            return_overflowing_tokens=True,
+            stride=128,
+            return_tensors='pt'
+        )
         
-        Args:
-            prediction: Predicted class (0=negative, 1=neutral, 2=positive)
-            probabilities: Class probabilities
+        # Remove overflow_to_sample_mapping if it exists (not needed for inference)
+        if 'overflow_to_sample_mapping' in inputs:
+            inputs.pop('overflow_to_sample_mapping')
             
-        Returns:
-            (sentiment_score, sentiment_label)
-            sentiment_score: -1 (very negative) to 1 (very positive)
-        """
-        label_map = {
-            0: 'negative',
-            1: 'neutral',
-            2: 'positive'
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}
+        
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+            logits = outputs.logits
+        
+        probabilities = torch.softmax(logits, dim=-1)
+        
+        # Average probabilities across all chunks
+        # This gives a "consensus" sentiment for the whole document
+        avg_probs = torch.mean(probabilities, dim=0)
+        
+        prediction = torch.argmax(avg_probs).item()
+        confidence = avg_probs[prediction].item()
+        
+        # Convert to score (-1 to 1)
+        # 0=negative, 1=neutral, 2=positive
+        # Score = Prob(Pos) - Prob(Neg)
+        sentiment_score = avg_probs[2].item() - avg_probs[0].item()
+        
+        # Apply keyword heuristics to refine score
+        sentiment_score = self._apply_keyword_heuristics(text, sentiment_score)
+        
+        # Determine label based on adjusted score
+        sentiment_label = self._get_label_from_score(sentiment_score)
+        
+        return {
+            'sentiment_score': float(sentiment_score),
+            'sentiment_label': sentiment_label,
+            'confidence': float(confidence)
         }
+
+    def _apply_keyword_heuristics(self, text: str, score: float) -> float:
+        """
+        Adjust sentiment score based on strong financial keywords.
+        This helps when the model is uncertain or misses domain-specific context.
+        """
+        text_lower = text.lower()
         
-        sentiment_label = label_map.get(prediction, 'neutral')
+        # Count occurrences
+        pos_count = sum(1 for w in POSITIVE_KEYWORDS if w in text_lower)
+        neg_count = sum(1 for w in NEGATIVE_KEYWORDS if w in text_lower)
         
-        if len(probabilities) >= 3:
-            sentiment_score = probabilities[2] - probabilities[0]
+        # Net keyword sentiment
+        net_keywords = pos_count - neg_count
+        
+        # Adjustment factor (0.05 per keyword, max 0.3 adjustment)
+        adjustment = max(min(net_keywords * 0.05, 0.3), -0.3)
+        
+        # If score is near zero (neutral), give keywords more weight
+        if -0.2 < score < 0.2:
+            if abs(net_keywords) >= 2:
+                # Strong signal from keywords, weak signal from model
+                # Boost the score significantly towards the keywords
+                score += adjustment * 1.5
+            else:
+                score += adjustment
         else:
-            sentiment_score = 0.0 if prediction == 1 else (1.0 if prediction == 2 else -1.0)
+            # If model is already confident, just nudge it slightly
+            score += adjustment * 0.5
+            
+        # Clamp score between -1 and 1
+        return max(min(score, 1.0), -1.0)
+
+    def _get_label_from_score(self, score: float) -> str:
+        """Map score to label with stricter thresholds"""
+        # Lower threshold slightly to capture more signals, 
+        # but rely on keyword boosting for accuracy
+        threshold = 0.15
         
-        return sentiment_score, sentiment_label
+        if score > threshold:
+            return 'positive'
+        elif score < -threshold:
+            return 'negative'
+        else:
+            return 'neutral'
     
     def get_sentiment_stats(self, texts: List[str]) -> Dict[str, float]:
         """
         Get aggregate sentiment statistics for multiple texts
-        
-        Returns:
-            Dictionary with average sentiment and distribution
         """
         results = self.analyze_batch(texts)
         

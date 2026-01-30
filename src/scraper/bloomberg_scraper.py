@@ -32,10 +32,9 @@ class BloombergScraper(BaseScraper):
             List of article dictionaries
         """
         all_articles = []
-        articles_scraped = 0
         
         try:
-            logger.info(f"Scraping Bloomberg: {category_url}")
+            logger.info(f"Phase 1: Collecting article URLs from {category_url}")
             response = self.session.get(category_url, timeout=REQUEST_TIMEOUT)
             response.raise_for_status()
             
@@ -46,23 +45,13 @@ class BloombergScraper(BaseScraper):
                 logger.warning(f"No article links found on Bloomberg page")
                 return []
             
-            logger.info(f"Found {len(article_links)} article links on Bloomberg")
+            # Limit to max_articles
+            final_urls = article_links[:max_articles]
+            logger.info(f"Phase 1 Complete: Found {len(final_urls)} article links")
             
-            links_to_scrape = article_links[:max_articles]
-            
-            for i, article_url in enumerate(links_to_scrape):
-                try:
-                    logger.info(f"Scraping article {i+1}/{len(links_to_scrape)}: {article_url}")
-                    article_data = self.scrape_article(article_url)
-                    
-                    if article_data:
-                        all_articles.append(article_data)
-                        articles_scraped += 1
-                        self._rate_limit(1)
-                        
-                except Exception as e:
-                    logger.error(f"Failed to scrape article {article_url}: {e}")
-                    continue
+            # Phase 2: Scrape articles concurrently
+            logger.info("Phase 2: Scraping article content concurrently...")
+            all_articles = self.scrape_articles_concurrently(final_urls, self.scrape_article)
                     
         except Exception as e:
             logger.error(f"Failed to scrape Bloomberg page {category_url}: {e}")

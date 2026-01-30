@@ -34,9 +34,14 @@ class CNBCScraper(BaseScraper):
             List of article dictionaries
         """
         all_articles = []
-        articles_scraped = 0
+        collected_urls = []
         
+        # Phase 1: Collect all URLs
+        logger.info(f"Phase 1: Collecting article URLs from {max_pages} pages...")
         for page_num in range(1, max_pages + 1):
+            if len(collected_urls) >= max_articles:
+                break
+
             # CNBC pagination format: ?page=2, ?page=3, etc.
             if page_num == 1:
                 page_url = category_url
@@ -45,49 +50,38 @@ class CNBCScraper(BaseScraper):
                 page_url = f"{category_url}{separator}page={page_num}"
             
             try:
-                logger.info(f"Scraping page {page_num}/{max_pages}: {page_url}")
+                logger.info(f"Scanning page {page_num}/{max_pages}: {page_url}")
                 response = self.session.get(page_url, timeout=REQUEST_TIMEOUT)
                 response.raise_for_status()
                 
                 soup = BeautifulSoup(response.content, 'lxml')
-                article_links = self._extract_article_links(soup)
+                page_links = self._extract_article_links(soup)
                 
-                if not article_links:
+                if not page_links:
                     logger.info(f"No more articles found on page {page_num}, stopping pagination")
                     break
                 
-                logger.info(f"Found {len(article_links)} article links on page {page_num}")
-                
-                remaining = max_articles - articles_scraped
-                links_to_scrape = article_links[:min(len(article_links), remaining)]
-                
-                for i, article_url in enumerate(links_to_scrape):
-                    try:
-                        logger.info(f"Scraping article {articles_scraped+1}/{max_articles}: {article_url}")
-                        article_data = self.scrape_article(article_url)
-                        
-                        if article_data:
-                            all_articles.append(article_data)
-                            articles_scraped += 1
-                            
-                            if articles_scraped >= max_articles:
-                                logger.info(f"Reached maximum articles limit ({max_articles})")
-                                return all_articles
-                            
-                            time.sleep(1)
-                            
-                    except Exception as e:
-                        logger.error(f"Failed to scrape article {article_url}: {e}")
-                        continue
+                new_links = [link for link in page_links if link not in collected_urls]
+                collected_urls.extend(new_links)
+                logger.info(f"Found {len(new_links)} new links on page {page_num}")
                 
                 if page_num < max_pages:
-                    time.sleep(2)
+                    time.sleep(1)
                         
             except Exception as e:
                 logger.error(f"Failed to scrape page {page_url}: {e}")
                 break
-                
-        logger.info(f"Total articles scraped: {len(all_articles)} from {page_num} page(s)")
+        
+        # Limit total URLs to max_articles
+        final_urls = collected_urls[:max_articles]
+        logger.info(f"Phase 1 Complete: Collected {len(final_urls)} unique article URLs")
+        
+        # Phase 2: Scrape articles concurrently
+        if final_urls:
+            logger.info("Phase 2: Scraping article content concurrently...")
+            all_articles = self.scrape_articles_concurrently(final_urls, self.scrape_article)
+            
+        logger.info(f"Total articles successfully scraped: {len(all_articles)}")
         return all_articles
     
     def _extract_article_links(self, soup: BeautifulSoup) -> List[str]:

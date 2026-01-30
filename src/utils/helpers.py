@@ -10,7 +10,8 @@ def clean_text(text: str) -> str:
         return ""
     
     text = re.sub(r'\s+', ' ', text)
-    text = re.sub(r'[^\w\s\-.,!?()]', '', text)
+    # Preserve alphanumeric, basic punctuation, currency symbols, and percentage
+    text = re.sub(r'[^\w\s\-.,!?()%$€£]', '', text)
     return text.strip()
 
 _STOCK_TICKERS_CACHE: Optional[Dict[str, str]] = None

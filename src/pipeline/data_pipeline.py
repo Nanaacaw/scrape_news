@@ -98,7 +98,9 @@ class DataPipeline:
         
         analyzer = self._get_sentiment_analyzer()
         
-        texts = [f"{article.title} {article.content[:500]}" for article in articles]
+        # Pass more context to analyzer (up to 5000 chars)
+        # The analyzer now handles long texts via sliding window
+        texts = [f"{article.title} {article.content[:5000]}" for article in articles]
         
         sentiment_results = analyzer.analyze_batch(texts)
         

@@ -28,9 +28,11 @@ def scheduled_scrape_job():
         all_articles = []
         
         from src.utils.config import MAX_ARTICLES_PER_SCRAPE
-        max_pages = 1
+        # Allow scraping up to 5 pages to reach the article limit
+        # If MAX_ARTICLES_PER_SCRAPE is reached earlier, the scraper will stop automatically
+        max_pages = 5
         
-        logger.info("Scraping from CNBC...")
+        logger.info(f"Scraping from CNBC (limit: {MAX_ARTICLES_PER_SCRAPE} articles)...")
         cnbc_scraper = CNBCScraper()
         cnbc_articles = cnbc_scraper.scrape_all(
             max_articles_per_category=MAX_ARTICLES_PER_SCRAPE,
@@ -39,7 +41,7 @@ def scheduled_scrape_job():
         logger.info(f"Scraped {len(cnbc_articles)} articles from CNBC")
         all_articles.extend(cnbc_articles)
         
-        logger.info("Scraping from Bloomberg...")
+        logger.info(f"Scraping from Bloomberg (limit: {MAX_ARTICLES_PER_SCRAPE} articles)...")
         bloomberg_scraper = BloombergScraper()
         bloomberg_articles = bloomberg_scraper.scrape_all(
             max_articles_per_category=MAX_ARTICLES_PER_SCRAPE,
