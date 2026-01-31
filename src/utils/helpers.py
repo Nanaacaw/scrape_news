@@ -66,6 +66,38 @@ def extract_stock_tickers(text: str) -> List[str]:
     
     return list(set(tickers))
 
+def extract_context_for_ticker(text: str, ticker: str, window_sentences: int = 1) -> str:
+    """
+    Extract relevant context for a specific ticker from text.
+    Returns sentences containing the ticker plus +/- window_sentences.
+    """
+    if not text or not ticker:
+        return ""
+        
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    relevant_sentences = []
+    
+    ticker_pattern = re.compile(rf'\b{re.escape(ticker)}\b', re.IGNORECASE)
+    
+    for i, sentence in enumerate(sentences):
+        if ticker_pattern.search(sentence):
+            start = max(0, i - window_sentences)
+            end = min(len(sentences), i + window_sentences + 1)
+            relevant_sentences.extend(sentences[start:end])
+            
+    if not relevant_sentences:
+        return ""
+        
+    # Deduplicate while preserving order
+    seen = set()
+    final_sentences = []
+    for s in relevant_sentences:
+        if s not in seen:
+            seen.add(s)
+            final_sentences.append(s)
+            
+    return " ".join(final_sentences)
+
 def get_stock_name(ticker: str) -> Optional[str]:
     """
     Get company name for a stock ticker

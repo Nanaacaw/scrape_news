@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
-from src.api.routes import articles, sentiment, search, stats
+from src.api.routes import articles, sentiment, search, stats, feedback
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -27,6 +27,7 @@ app.include_router(articles.router)
 app.include_router(sentiment.router)
 app.include_router(search.router)
 app.include_router(stats.router)
+app.include_router(feedback.router)
 
 @app.get("/", include_in_schema=False)
 def root():

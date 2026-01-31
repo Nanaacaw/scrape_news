@@ -5,10 +5,10 @@ from typing import List, Dict
 from sqlalchemy.orm import Session
 from datetime import datetime
 
-from src.database.models import Article
+from src.database.models import Article, TickerSentiment
 from src.sentiment.analyzer import SentimentAnalyzer
 from src.utils.logger import get_logger
-from src.utils.helpers import extract_stock_tickers
+from src.utils.helpers import extract_stock_tickers, extract_context_for_ticker
 
 logger = get_logger(__name__)
 
@@ -93,15 +93,13 @@ class DataPipeline:
         logger.info("Ticker extraction complete")
     
     def _analyze_sentiments(self, db: Session, articles: List[Article]):
-        """Analyze sentiment for articles and update them directly"""
+        """Analyze sentiment for articles and specific tickers"""
         logger.info(f"Analyzing sentiment for {len(articles)} articles...")
         
         analyzer = self._get_sentiment_analyzer()
         
-        # Pass more context to analyzer (up to 5000 chars)
-        # The analyzer now handles long texts via sliding window
+        # 1. Global Sentiment Analysis (Existing)
         texts = [f"{article.title} {article.content[:5000]}" for article in articles]
-        
         sentiment_results = analyzer.analyze_batch(texts)
         
         for article, result in zip(articles, sentiment_results):
@@ -109,7 +107,35 @@ class DataPipeline:
             article.sentiment_label = result['sentiment_label']
             article.confidence = result['confidence']
             article.analyzed_date = datetime.now()
+            
+            # 2. Aspect-Based Sentiment Analysis (Per Ticker)
+            if article.tickers:
+                ticker_list = article.tickers.split(',')
+                for ticker in ticker_list:
+                    ticker = ticker.strip()
+                    if not ticker:
+                        continue
+                        
+                    # Extract context specifically for this ticker
+                    context = extract_context_for_ticker(article.content, ticker, window_sentences=2)
+                    if not context:
+                        # Fallback to title if context not found in body
+                        context = article.title
+                    
+                    # Analyze specific context
+                    ticker_result = analyzer.analyze_text(context)
+                    
+                    # Create TickerSentiment entry
+                    ts = TickerSentiment(
+                        article_id=article.id,
+                        ticker=ticker,
+                        sentiment_score=ticker_result['sentiment_score'],
+                        sentiment_label=ticker_result['sentiment_label'],
+                        confidence=ticker_result['confidence'],
+                        context_text=context[:500]  # Store snippet for verification
+                    )
+                    db.add(ts)
         
         db.commit()
-        logger.info("Sentiment analysis complete")
+        logger.info("Sentiment analysis (Global + ABSA) complete")
 
