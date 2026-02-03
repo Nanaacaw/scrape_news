@@ -65,13 +65,18 @@ def scheduled_scrape_job():
 
 def _get_scheduler_config():
     """Get common scheduler configuration"""
-    # Force single worker to save resources and ensure sequential execution
+    import os
+    # Default to 1 for sequential execution, but allow scaling via env var
+    max_workers = int(os.getenv("MAX_WORKERS", "1"))
+    
+    logger.info(f"Scheduler configured with {max_workers} worker(s)")
+    
     executors = {
-        'default': ThreadPoolExecutor(max_workers=1)
+        'default': ThreadPoolExecutor(max_workers=max_workers)
     }
     job_defaults = {
         'coalesce': True,
-        'max_instances': 1
+        'max_instances': max_workers
     }
     return executors, job_defaults
 
