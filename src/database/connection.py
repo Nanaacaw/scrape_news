@@ -7,20 +7,26 @@ from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-DATABASE_URL = f"sqlite:///{DATABASE_FULL_PATH}"
+import os
+
+DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DATABASE_FULL_PATH}")
+
+connect_args = {}
+if DATABASE_URL.startswith("sqlite"):
+    connect_args = {"check_same_thread": False}
+
 engine = create_engine(
     DATABASE_URL,
     echo=False,
-    connect_args={"check_same_thread": False}
+    connect_args=connect_args
 )
-
-# Enable Write-Ahead Logging (WAL) for better concurrency
-@event.listens_for(engine, "connect")
-def set_sqlite_pragma(dbapi_connection, connection_record):
-    cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL")
-    cursor.execute("PRAGMA synchronous=NORMAL")
-    cursor.close()
+if DATABASE_URL.startswith("sqlite"):
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.close()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

@@ -6,7 +6,9 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from apscheduler.schedulers.blocking import BlockingScheduler
+from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.executors.pool import ThreadPoolExecutor
 from datetime import datetime
 
 from src.database.connection import get_db
@@ -61,13 +63,47 @@ def scheduled_scrape_job():
         logger.error(f"Scheduled scraping job failed: {e}")
 
 
+def _get_scheduler_config():
+    """Get common scheduler configuration"""
+    # Force single worker to save resources and ensure sequential execution
+    executors = {
+        'default': ThreadPoolExecutor(max_workers=1)
+    }
+    job_defaults = {
+        'coalesce': True,
+        'max_instances': 1
+    }
+    return executors, job_defaults
+
+
+def start_background_scheduler():
+    """
+    Start the scheduler in background mode (runs in a separate thread)
+    Useful when running inside the API application
+    """
+    executors, job_defaults = _get_scheduler_config()
+    scheduler = BackgroundScheduler(executors=executors, job_defaults=job_defaults)
+    
+    scheduler.add_job(
+        scheduled_scrape_job,
+        'interval',
+        hours=SCRAPE_INTERVAL_HOURS,
+        id='scrape_job',
+        name='News Scraping Job (CNBC + Bloomberg)',
+        replace_existing=True
+    )
+    
+    scheduler.start()
+    logger.info(f"Background Scheduler started. Will run every {SCRAPE_INTERVAL_HOURS} hour(s)")
+    return scheduler
+
+
 def run_scheduler():
     """
-    Run the scheduler
-    
-    By default, runs every SCRAPE_INTERVAL_HOURS
+    Run the scheduler in blocking mode
     """
-    scheduler = BlockingScheduler()
+    executors, job_defaults = _get_scheduler_config()
+    scheduler = BlockingScheduler(executors=executors, job_defaults=job_defaults)
     
     scheduler.add_job(
         scheduled_scrape_job,
