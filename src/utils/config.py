@@ -6,7 +6,8 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).parent.parent.parent
 
-DATABASE_PATH = os.getenv('DATABASE_PATH', 'data/cnbc_news.db')
+DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_PATH = os.getenv("DATABASE_PATH", "data/news.db")
 DATABASE_FULL_PATH = BASE_DIR / DATABASE_PATH
 
 SCRAPE_INTERVAL_HOURS = int(os.getenv('SCRAPE_INTERVAL_HOURS', '1'))
@@ -19,7 +20,7 @@ USER_AGENT = os.getenv(
 )
 
 CNBC_BASE_URL = os.getenv('CNBC_BASE_URL', 'https://www.cnbcindonesia.com')
-CNBC_MARKET_URL = os.getenv('CNBC_MARKET_URL', f'{CNBC_BASE_URL}/market')
+CNBC_MARKET_URL = os.getenv('CNBC_MARKET_URL', f'{CNBC_BASE_URL}/market/indeks/5')
 CNBC_INVESTMENT_URL = os.getenv('CNBC_INVESTMENT_URL', f'{CNBC_BASE_URL}/investment')
 BLOOMBERG_BASE_URL = os.getenv('BLOOMBERG_BASE_URL', 'https://www.bloombergtechnoz.com')
 BLOOMBERG_MARKET_URL = os.getenv('BLOOMBERG_MARKET_URL', f'{BLOOMBERG_BASE_URL}/indeks/market')

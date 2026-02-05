@@ -8,54 +8,52 @@
 - 🤖 **Sentiment Analysis**: Analisis sentiment menggunakan IndoBERT (Bahasa Indonesia)
 - 📈 **Stock Ticker Database**: Integrasi lengkap dengan 952 saham Indonesia dari IDX
 - ⏰ **Automated Scheduling**: Scraping otomatis dengan interval yang bisa dikustomisasi
-- 💾 **Database**: Penyimpanan data dengan SQLite
+- 💾 **Database**: SQLite (local dev) / Postgres (deploy)
 
-## 🚀 Quick Start
+## 🚀 Quick Start (Docker Compose)
 
-### 1. Installation
+### 1. Configuration
 
 ```bash
-# Clone repository
-cd c:\Users\midory\Kerja\scrape_news
+# Mac/Linux
+cp .env.docker.example .env
 
-# Create virtual environment
+# Windows (PowerShell)
+# copy .env.docker.example .env
+```
+
+### 2. Start services
+
+```bash
+docker compose up -d --build
+```
+
+### 3. Run first scrape (optional)
+
+```bash
+docker compose exec scheduler python main.py scrape --source all --limit 10
+```
+
+### 4. Open API docs
+
+Swagger UI: http://localhost:8000/docs
+
+## 🧑‍💻 Local Development (without Docker)
+
+```bash
+cp .env.example .env
+
 python -m venv venv
+source venv/bin/activate
+# pilih salah satu:
+make install-api       # API only
+make install-worker    # scraper + sentiment worker
+# atau:
+# make install         # full (superset)
 
-# Activate virtual environment
-# Windows:
-venv\Scripts\activate
-# Linux/Mac:
-# source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-### 2. Configuration
-
-```bash
-# Copy environment template
-copy .env.example .env
-
-# Edit .env sesuai kebutuhan (optional)
-# Secara default sudah dikonfigurasi untuk scrape CNBC Indonesia
-```
-
-### 3. Initialize Database
-
-```bash
 python main.py init
-```
-
-### 4. Run First Scrape
-
-```bash
-# Scrape from both CNBC and Bloomberg
 python main.py scrape --source all --limit 10
-
-# Or scrape specific source:
-# python main.py scrape --source cnbc --limit 20
-# python main.py scrape --source bloomberg --limit 20
+make api-dev
 ```
 
 ## 📖 Usage Guide
@@ -113,7 +111,7 @@ python main.py stats
 
 | Source | URL | Description |
 |--------|-----|-------------|
-| `cnbc` | cnbcindonesia.com/market | CNBC Indonesia Market news |
+| `cnbc` | cnbcindonesia.com/market/indeks/5 | CNBC Indonesia Market index |
 | `bloomberg` | bloombergtechnoz.com/indeks/market | Bloomberg Technoz Market news |
 | `all` | Both sources | Comprehensive coverage |
 
@@ -122,7 +120,7 @@ python main.py stats
 Untuk menjalankan scraping otomatis sesuai interval:
 
 ```bash
-python src/scraper/scheduler.py
+python -m src.scraper.scheduler
 ```
 
 Default: scrape setiap **1 jam** (bisa diatur di `.env`)
@@ -198,26 +196,18 @@ print(f"Found {data['total']} articles")
          │
          ▼
 ┌─────────────────┐
-│  SQLite DB      │
+│  Database       │
+│ (SQLite/Postgres)│
 │  - Articles     │
-│  - Sentiments   │
-│  - Stocks       │
-│  - Signals      │
+│  - TickerSentiments
 └────┬──────┬─────┘
      │      │
-     │      └──────────────┐
-     ▼                     ▼
+     ▼      ▼
 ┌──────────────┐   ┌──────────────────┐
-│  Sentiment   │   │ Stock Screener   │
-│   Analyzer   │──▶│  & Signals       │
-│  (IndoBERT)  │   │  Generator       │
-└──────────────┘   └────────┬─────────┘
-                            │
-                            ▼
-                   ┌──────────────────┐
-                   │   Streamlit      │
-                   │   Dashboard      │
-                   └──────────────────┘
+│  Sentiment   │   │     FastAPI      │
+│   Analyzer   │   │   REST API       │
+│  (IndoBERT)  │   │                  │
+└──────────────┘   └──────────────────┘
 ```
 
 ## 📁 Project Structure
@@ -225,9 +215,19 @@ print(f"Found {data['total']} articles")
 ```
 scrape_news/
 ├── main.py                      # CLI entry point
-├── requirements.txt             # Python dependencies
+├── requirements.txt             # Dev dependencies (superset)
+├── requirements/                # Split deps for Docker images
+│   ├── api.txt
+│   └── worker.txt
 ├── .env.example                 # Environment template
 ├── .gitignore
+├── docker-compose.yml
+├── docker/
+│   ├── api.Dockerfile
+│   ├── worker.Dockerfile
+│   ├── entrypoint-api.sh
+│   ├── entrypoint-worker.sh
+│   └── wait_for_db.py
 │
 ├── src/
 │   ├── database/
@@ -244,15 +244,14 @@ scrape_news/
 │   ├── pipeline/
 │   │   └── data_pipeline.py    # Data processing pipeline
 │   │
-│   ├── dashboard/
-│   │   └── app.py              # Streamlit dashboard (REMOVED)
-│   │
 │   └── utils/
 │       ├── config.py           # Configuration
 │       ├── logger.py           # Logging
 │       └── helpers.py          # Helper functions
 │
-├── data/                        # SQLite database (auto-created)
+├── tests/
+│
+├── data/                        # Optional data files (e.g., idx_stonks.csv)
 ├── logs/                        # Log files (auto-created)
 └── models/                      # Cached models (auto-created)
 ```
@@ -319,12 +318,6 @@ python -c "from transformers import AutoTokenizer, AutoModelForSequenceClassific
 3. Check `logs/scraper.log` for detailed errors
 4. CNBC might have changed their HTML structure (update selectors in `cnbc_scraper.py`)
 
-### Issue: Dashboard not showing data
-
-1. Ensure database is initialized: `python main.py init`
-2. Run scraper first: `python main.py scrape --limit 10`
-3. Check if database file exists: `data/cnbc_news.db`
-
 ## ⚖️ Legal & Ethical Considerations
 
 - ⚠️ Web scraping harus mematuhi `robots.txt` dan Terms of Service CNBC Indonesia
@@ -334,9 +327,9 @@ python -c "from transformers import AutoTokenizer, AutoModelForSequenceClassific
 
 ## 🛠️ Tech Stack
 
-- **Python 3.9+**
+- **Python 3.10+**
 - **Web Scraping**: Requests + BeautifulSoup4  
-- **Database**: SQLite + SQLAlchemy
+- **Database**: SQLite/Postgres + SQLAlchemy
 - **Sentiment**: Transformers (HuggingFace) + IndoBERT
 - **Stock Data**: 952 Indonesian stocks from IDX (idx_stonks.csv)
 - **Scheduling**: APScheduler

@@ -1,5 +1,8 @@
 from contextlib import contextmanager
+import os
+
 from sqlalchemy import create_engine, event
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker, Session
 from src.database.models import Base
 from src.utils.config import DATABASE_FULL_PATH
@@ -7,33 +10,55 @@ from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-import os
+engine: Engine | None = None
+SessionLocal = sessionmaker(autocommit=False, autoflush=False)
 
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DATABASE_FULL_PATH}")
+def _normalize_database_url(database_url: str) -> str:
+    if database_url.startswith("postgres://"):
+        return f"postgresql://{database_url.removeprefix('postgres://')}"
+    return database_url
 
-connect_args = {}
-if DATABASE_URL.startswith("sqlite"):
-    connect_args = {"check_same_thread": False}
 
-engine = create_engine(
-    DATABASE_URL,
-    echo=False,
-    connect_args=connect_args
-)
-if DATABASE_URL.startswith("sqlite"):
-    @event.listens_for(engine, "connect")
-    def set_sqlite_pragma(dbapi_connection, connection_record):
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.execute("PRAGMA synchronous=NORMAL")
-        cursor.close()
+def init_engine() -> Engine:
+    global engine
+    if engine is not None:
+        return engine
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    database_url = os.getenv("DATABASE_URL") or f"sqlite:///{DATABASE_FULL_PATH}"
+    database_url = _normalize_database_url(database_url)
+
+    if not database_url.startswith(("postgresql", "sqlite")):
+        raise RuntimeError("Unsupported DATABASE_URL scheme (use postgresql:// or sqlite://)")
+
+    connect_args = {}
+    if database_url.startswith("sqlite"):
+        connect_args = {"check_same_thread": False}
+
+    engine = create_engine(
+        database_url,
+        echo=False,
+        pool_pre_ping=True,
+        connect_args=connect_args,
+    )
+    if database_url.startswith("sqlite"):
+        @event.listens_for(engine, "connect")
+        def set_sqlite_pragma(dbapi_connection, connection_record):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.close()
+
+    SessionLocal.configure(bind=engine)
+    return engine
 
 def init_database():
     try:
+        engine = init_engine()
         Base.metadata.create_all(bind=engine)
-        logger.info(f"Database initialized at {DATABASE_FULL_PATH}")
+        logger.info(
+            "Database initialized ({})",
+            engine.url.render_as_string(hide_password=True),
+        )
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
         raise
@@ -46,6 +71,7 @@ def get_db() -> Session:
             # perform database operations
             db.query(Article).all()
     """
+    init_engine()
     db = SessionLocal()
     try:
         yield db
@@ -58,4 +84,5 @@ def get_db() -> Session:
         db.close()
 
 def get_db_session() -> Session:
+    init_engine()
     return SessionLocal()

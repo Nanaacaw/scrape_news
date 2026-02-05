@@ -12,7 +12,7 @@ router = APIRouter(prefix="/api/search", tags=["Search"])
 def search_articles(
     q: str = Query(..., min_length=2),
     limit: int = Query(20, ge=1, le=100),
-    search_in: str = Query("both", regex="^(title|content|both)$"),
+    search_in: str = Query("both", pattern="^(title|content|both)$"),
     db: Session = Depends(get_db)
 ):
     """

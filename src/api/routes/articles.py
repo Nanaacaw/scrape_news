@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
-from typing import Optional, List
-from datetime import datetime, timedelta
+from typing import Optional
+from datetime import datetime
 
 from src.database.models import Article
 from src.api.models.schemas import ArticleResponse, ArticleListResponse
@@ -15,8 +15,8 @@ def get_articles(
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
     ticker: Optional[str] = Query(None),
-    sentiment: Optional[str] = Query(None, regex="^(positive|neutral|negative)$"),
-    source: Optional[str] = Query(None, regex="^(cnbc|bloomberg)$"),
+    sentiment: Optional[str] = Query(None, pattern="^(positive|neutral|negative)$"),
+    source: Optional[str] = Query(None, pattern="^(cnbc|bloomberg)$"),
     category: Optional[str] = Query(None),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),

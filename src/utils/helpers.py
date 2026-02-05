@@ -3,7 +3,6 @@ import re
 from typing import Optional, List, Dict, Set
 import os
 from pathlib import Path
-import pandas as pd
 
 def clean_text(text: str) -> str:
     if not text:
@@ -29,6 +28,8 @@ def load_idx_stocks() -> Dict[str, str]:
         raise FileNotFoundError(f"Stock data file not found: {csv_path}")
     
     try:
+        import pandas as pd
+
         df = pd.read_csv(csv_path)
         
         _STOCK_TICKERS_CACHE = {}

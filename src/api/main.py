@@ -39,15 +39,6 @@ def health():
     """Quick health check without database"""
     return {"status": "healthy", "message": "API is running"}
 
-@app.on_event("startup")
-def startup_event():
-    """Start scheduler if enabled via environment variable"""
-    import os
-    if os.getenv("RUN_SCHEDULER", "false").lower() == "true":
-        from src.scraper.scheduler import start_background_scheduler
-        logger.info("Enabling background scheduler...")
-        start_background_scheduler()
-
 if __name__ == "__main__":
     import uvicorn
     logger.info("Starting News Sentiment Analysis API...")

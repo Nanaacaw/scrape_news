@@ -8,9 +8,11 @@ WORKDIR /app
 COPY requirements/api.txt /app/requirements/api.txt
 RUN pip install --no-cache-dir -r /app/requirements/api.txt
 
-COPY . .
+COPY . /app
+
+RUN chmod +x /app/docker/entrypoint-api.sh
 
 EXPOSE 8000
 
-RUN chmod +x /app/docker/entrypoint-api.sh
 ENTRYPOINT ["/app/docker/entrypoint-api.sh"]
+

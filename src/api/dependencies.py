@@ -1,9 +1,9 @@
 from typing import Generator
 from sqlalchemy.orm import Session
-from src.database.connection import SessionLocal
+from src.database.connection import get_db_session
 
 def get_db() -> Generator[Session, None, None]:
-    db = SessionLocal()
+    db = get_db_session()
     try:
         yield db
     finally:

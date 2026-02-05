@@ -2,6 +2,8 @@
 
 ## 🚀 Quick Start
 
+> Local dev defaults to SQLite via `DATABASE_PATH` (see `.env.example`). For deployment use Postgres via `DATABASE_URL` (see `.env.docker.example`).
+
 ### Start the API Server
 
 ```bash

@@ -1,15 +1,6 @@
-import sys
-from pathlib import Path
-
-project_root = Path(__file__).parent.parent.parent
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
-
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
 from apscheduler.executors.pool import ThreadPoolExecutor
-from datetime import datetime
 
 from src.database.connection import get_db
 from src.scraper.cnbc_scraper import CNBCScraper
